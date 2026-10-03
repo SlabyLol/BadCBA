@@ -37,7 +37,6 @@ static int allocate_buffer(rsxBuffer *buf, u32 width, u32 height)
     buf->height = height;
     buf->pitch  = width * 4;
 
-    /* Allocate in RSX memory */
     buf->ptr = (u32 *)rsxMemalign(64, buf->pitch * height);
     if (!buf->ptr)
         return -1;
@@ -104,7 +103,6 @@ int rsxutil_init(u32 *out_width, u32 *out_height)
     if (!host_addr)
         return -1;
 
-    /* PSL1GHT signature: rsxInit(gcmContextData **ctx, cmdSize, ioSize, ioAddress) */
     if (rsxInit(&context, CB_SIZE, HOST_SIZE, host_addr) != 0)
         return -1;
 
@@ -131,7 +129,7 @@ void rsxutil_flip(void)
 {
     rsxFlushBuffer(context);
     gcmSetFlip(context, currentBuffer);
-    rsxSetWaitFlip(context);
+    gcmSetWaitFlip(context);
     wait_flip();
 
     currentBuffer ^= 1;
@@ -160,5 +158,4 @@ void rsxutil_clear(u32 color)
 
 void rsxutil_finish(void)
 {
-    /* Buffers stay until process exit */
 }
