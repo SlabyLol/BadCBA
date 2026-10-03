@@ -1,7 +1,7 @@
 #ifndef BADCBA_FILEBROWSER_H
 #define BADCBA_FILEBROWSER_H
 
-#include <rsx/rsx.h>
+#include "rsxutil.h"
 
 void filebrowser_open(const char *path);
 void filebrowser_up(void);

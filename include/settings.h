@@ -1,7 +1,7 @@
 #ifndef BADCBA_SETTINGS_H
 #define BADCBA_SETTINGS_H
 
-#include <rsx/rsx.h>
+#include "rsxutil.h"
 
 void settings_load(void);
 void settings_save(void);

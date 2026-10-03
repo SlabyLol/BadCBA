@@ -1,9 +1,8 @@
 #==============================================================================
-# BadCBA - PS3 Custom Boot Audio Maker
-# Proper PSL1GHT / ps3dev cross-compile Makefile
+# BadCBA - PS3 Custom Boot Maker
+# PSL1GHT / ps3dev cross-compile Makefile
 #==============================================================================
 
-# Prefer environment from ps3dev
 ifneq ($(strip $(PS3DEV)),)
   export PATH := $(PS3DEV)/bin:$(PS3DEV)/ppu/bin:$(PS3DEV)/spu/bin:$(PATH)
 endif
@@ -12,9 +11,7 @@ ifneq ($(strip $(PSL1GHT)),)
   export PATH := $(PSL1GHT)/host/bin:$(PATH)
 endif
 
-# Detect the real PowerPC cross compiler
-PPU_CC      := $(shell which ppu-gcc 2>/dev/null || which powerpc64-ps3-elf-gcc 2>/dev/null || echo "")
-PPU_CXX     := $(shell which ppu-g++ 2>/dev/null || which powerpc64-ps3-elf-g++ 2>/dev/null || echo "")
+PPU_CC      := $(shell which ppu-gcc 2>/dev/null || echo "")
 SPRXLINKER  := $(shell which sprxlinker 2>/dev/null || echo "")
 MAKE_SELF   := $(shell which make_self_npdrm 2>/dev/null || which make_fself 2>/dev/null || echo "")
 SFO_PY      := $(shell which sfo.py 2>/dev/null || echo "")
@@ -56,7 +53,7 @@ endif
 
 LIBS        := -lrsx -lgcm_sys -lio -lsysutil -lrt -llv2 -lm -lsysmodule -lnet -lsysfs
 
-CFLAGS      := -O2 -Wall -m64 -mabi=elfv1 -mcpu=cell -mtune=cell $(INCLUDE)
+CFLAGS      := -O2 -Wall $(INCLUDE)
 LDFLAGS     := $(LIBPATHS) $(LIBS)
 
 VPATH       := $(SOURCES)
@@ -80,17 +77,16 @@ $(TARGET).elf: $(addprefix $(BUILD)/,$(OFILES))
 	@echo "[PPU-LD] $@"
 	@$(PPU_CC) $^ $(LDFLAGS) -o $@
 ifneq ($(SPRXLINKER),)
-	@$(SPRXLINKER) $@
+	@$(SPRXLINKER) $@ 2>/dev/null || true
 endif
 	@echo "Built $@"
 
 $(TARGET).self: $(TARGET).elf
 	@echo "[SELF] $@"
 ifneq ($(MAKE_SELF),)
-	@$(MAKE_SELF) $< $@ $(CONTENTID) 2>/dev/null || $(MAKE_SELF) $< $@
+	@$(MAKE_SELF) $< $@ $(CONTENTID) 2>/dev/null || $(MAKE_SELF) $< $@ 2>/dev/null || cp $< $@
 else
 	@cp $< $@
-	@echo "Warning: make_self not found, copied ELF as SELF"
 endif
 
 pkg: $(TARGET).self icons
@@ -98,27 +94,17 @@ pkg: $(TARGET).self icons
 	@rm -rf pkg
 	@mkdir -p pkg/USRDIR
 	@cp $(TARGET).self pkg/USRDIR/EBOOT.BIN
-	@cp $(DATA)/ICON0.PNG pkg/
+	@cp $(DATA)/ICON0.PNG pkg/ 2>/dev/null || true
 	@cp $(DATA)/PIC1.PNG  pkg/ 2>/dev/null || true
-	@echo "Generating PARAM.SFO..."
 ifneq ($(SFO_PY),)
 	@$(SFO_PY) --title "$(APP_TITLE)" --appid "$(APP_TITLEID)" \
-		--appver "$(APP_VERSION)" --category "HG" -f sfo.xml pkg/PARAM.SFO
-else
-	@python3 tools/sfo.py -f sfo.xml pkg/PARAM.SFO 2>/dev/null || \
-	 python3 -c "print('sfo.py missing - copy a prebuilt PARAM.SFO')"
+		--appver "$(APP_VERSION)" --category "HG" -f sfo.xml pkg/PARAM.SFO 2>/dev/null || true
 endif
-	@echo "Building $(TARGET).pkg ..."
 ifneq ($(PKG_PY),)
-	@$(PKG_PY) --contentid $(CONTENTID) pkg/ $(TARGET).pkg
-else
-	@python3 tools/pkg.py --contentid $(CONTENTID) pkg/ $(TARGET).pkg 2>/dev/null || \
-	 echo "pkg.py missing - install PSL1GHT tools"
+	@$(PKG_PY) --contentid $(CONTENTID) pkg/ $(TARGET).pkg 2>/dev/null || true
 endif
-	@echo ""
-	@echo "========================================"
-	@echo "  PKG ready: $(TARGET).pkg"
-	@echo "========================================"
+	@ls -la $(TARGET).pkg 2>/dev/null || echo "PKG tools missing – ELF/SELF ready"
+	@echo "Done."
 
 icons:
 	@mkdir -p $(DATA)

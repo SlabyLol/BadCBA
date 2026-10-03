@@ -2,7 +2,8 @@
 #define BADCBA_GUI_H
 
 #include <io/pad.h>
-#include <rsx/rsx.h>
+#include <rsx/gcm_sys.h>
+#include "rsxutil.h"
 
 typedef enum {
     MENU_MAIN = 0,
@@ -21,7 +22,6 @@ void gui_render(gcmContextData *context, rsxBuffer *buffer);
 void gui_set_menu(MenuState menu);
 MenuState gui_get_menu(void);
 
-/* Drawing helpers */
 void gui_draw_rect(rsxBuffer *buf, int x, int y, int w, int h, u32 color);
 void gui_draw_text(rsxBuffer *buf, int x, int y, const char *text, u32 color);
 void gui_draw_text_scaled(rsxBuffer *buf, int x, int y, const char *text, u32 color, int scale);
