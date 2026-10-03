@@ -22,10 +22,8 @@ env:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    # Skip release upload on pull_request only
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
     - name: Install host dependencies
       run: |
@@ -73,8 +71,7 @@ jobs:
 
     - name: Verify toolchain
       run: |
-        which ppu-gcc
-        ppu-gcc --version | head -3
+        which ppu-gcc && ppu-gcc --version | head -2
 
     - name: Sync version.dat
       run: |
@@ -89,28 +86,37 @@ jobs:
         set -e
         make clean || true
         make -j$(nproc)
-        make pkg || true
+        make pkg
+        echo "=== Outputs ==="
         ls -la BadCBA.elf BadCBA.self BadCBA.pkg version.dat 2>/dev/null || ls -la
+
+    - name: Collect release files
+      id: files
+      run: |
+        mkdir -p release_out
+        for f in BadCBA.pkg BadCBA.elf BadCBA.self version.dat; do
+          if [ -f "$f" ]; then
+            cp "$f" release_out/
+            echo "+ $f"
+          else
+            echo "- missing $f"
+          fi
+        done
+        ls -la release_out/
+        # Export list for release action
+        echo "count=$(ls release_out | wc -l)" >> $GITHUB_OUTPUT
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
         name: BadCBA-${{ github.sha }}
-        path: |
-          BadCBA.pkg
-          BadCBA.elf
-          BadCBA.self
-          version.dat
-          data/ICON0.PNG
-          data/PIC1.PNG
+        path: release_out/*
         if-no-files-found: warn
 
-    # ALWAYS publish on main / tags / manual / release event (NOT on pull_request)
     - name: Publish Release
-      if: github.event_name != 'pull_request'
+      if: github.event_name != 'pull_request' && steps.files.outputs.count != '0'
       uses: softprops/action-gh-release@v2
       with:
-        # On version tags use the tag; otherwise keep a rolling "latest" release
         tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'latest' }}
         name: ${{ startsWith(github.ref, 'refs/tags/v') && format('BadCBA {0}', github.ref_name) || format('BadCBA latest ({0})', env.APP_VERSION) }}
         body: |
@@ -118,22 +124,14 @@ jobs:
 
           - **Version:** `${{ env.APP_VERSION }}`
           - **Commit:** `${{ github.sha }}`
-          - **Ref:** `${{ github.ref_name }}`
 
           ### Install
-          1. Download **BadCBA.pkg**
-          2. Copy to USB → Package Manager → Install
-          3. Launch under Game in the XMB
+          1. Download **BadCBA.pkg** (or .elf/.self)
+          2. USB → Package Manager → Install
+          3. Launch under Game
 
-          ### Files
-          - `BadCBA.pkg`
-          - `BadCBA.elf` / `BadCBA.self`
-          - `version.dat` (`${{ env.APP_VERSION }}`)
-        files: |
-          BadCBA.pkg
-          BadCBA.elf
-          BadCBA.self
-          version.dat
+          Includes `version.dat` = `${{ env.APP_VERSION }}`
+        files: release_out/*
         draft: false
         prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         make_latest: true
