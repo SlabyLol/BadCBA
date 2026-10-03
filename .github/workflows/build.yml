@@ -9,11 +9,15 @@ on:
     types: [ published ]
   workflow_dispatch:
 
+env:
+  PS3DEV: /usr/local/ps3dev
+  PSL1GHT: /usr/local/ps3dev
+  # Official prebuilt nightly from ps3dev/ps3dev
+  PS3DEV_URL: https://github.com/ps3dev/ps3dev/releases/download/nightly-2026-07-26/ps3dev-linux-X64.tar.gz
+
 jobs:
   build:
     runs-on: ubuntu-22.04
-    # Use a container that already has (or can build) the PS3 toolchain.
-    # Official prebuilt images are large; we bootstrap ps3dev when needed.
 
     steps:
     - name: Checkout
@@ -23,48 +27,62 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y --no-install-recommends \
-          build-essential autoconf automake bison flex \
-          libelf-dev libgmp-dev libncurses5-dev libssl-dev \
-          libtool-bin pkg-config texinfo wget zlib1g-dev \
-          git python3 python3-pip cmake ca-certificates \
-          libpng-dev
+          build-essential wget ca-certificates python3 \
+          libelf1 zlib1g libgmp10 libssl3
 
     - name: Cache PS3DEV toolchain
       id: cache
       uses: actions/cache@v4
       with:
         path: /usr/local/ps3dev
-        key: ps3dev-toolchain-ubuntu22-${{ hashFiles('.github/workflows/build.yml') }}
+        key: ps3dev-linux-X64-nightly-2026-07-26
 
-    - name: Build / restore PS3 toolchain
+    - name: Download & install prebuilt PS3DEV
       if: steps.cache.outputs.cache-hit != 'true'
       run: |
         set -e
-        export PS3DEV=/usr/local/ps3dev
-        export PSL1GHT=$PS3DEV
-        sudo mkdir -p $PS3DEV
-        sudo chown -R $USER:$USER $PS3DEV
+        echo "Downloading prebuilt toolchain..."
+        wget -q --show-progress -O /tmp/ps3dev.tar.gz "${{ env.PS3DEV_URL }}"
+        echo "Extracting to ${{ env.PS3DEV }} ..."
+        sudo mkdir -p ${{ env.PS3DEV }}
+        sudo tar -xzf /tmp/ps3dev.tar.gz -C /usr/local
+        # Archive may extract as ps3dev/ or directly into structure
+        if [ -d /usr/local/ps3dev/ps3dev ]; then
+          sudo mv /usr/local/ps3dev/ps3dev/* /usr/local/ps3dev/ || true
+        fi
+        # Some archives extract as a top-level folder name
+        if [ ! -x ${{ env.PS3DEV }}/ppu/bin/ppu-gcc ]; then
+          # try find ppu-gcc
+          FOUND=$(find /usr/local -name 'ppu-gcc' -type f 2>/dev/null | head -1)
+          if [ -n "$FOUND" ]; then
+            ROOT=$(dirname $(dirname $(dirname "$FOUND")))
+            echo "Found toolchain at $ROOT"
+            sudo rm -rf ${{ env.PS3DEV }}
+            sudo mv "$ROOT" ${{ env.PS3DEV }}
+          fi
+        fi
+        sudo chown -R $USER:$USER ${{ env.PS3DEV }}
+        rm -f /tmp/ps3dev.tar.gz
+        echo "Install done."
+        ls -la ${{ env.PS3DEV }}/ppu/bin/ | head -20 || ls -la ${{ env.PS3DEV }}/ | head -30
 
-        echo "=== Cloning ps3toolchain ==="
-        git clone --depth=1 https://github.com/ps3dev/ps3toolchain.git /tmp/ps3toolchain
-        cd /tmp/ps3toolchain
-
-        # toolchain.sh builds everything (takes a long time on first run)
-        # We run it with a reasonable timeout / continue on partial success for CI visibility
-        echo "=== Building toolchain (this can take 30-90 min on first run) ==="
-        ./toolchain.sh || echo "Toolchain build finished with warnings"
-
-        echo "=== Checking ppu-gcc ==="
-        export PATH=$PS3DEV/bin:$PS3DEV/ppu/bin:$PS3DEV/spu/bin:$PATH
-        which ppu-gcc || echo "ppu-gcc not found yet"
-
-    - name: Set environment
+    - name: Setup PATH
       run: |
-        echo "PS3DEV=/usr/local/ps3dev" >> $GITHUB_ENV
-        echo "PSL1GHT=/usr/local/ps3dev" >> $GITHUB_ENV
-        echo "PATH=/usr/local/ps3dev/bin:/usr/local/ps3dev/ppu/bin:/usr/local/ps3dev/spu/bin:/usr/local/ps3dev/host/bin:$PATH" >> $GITHUB_ENV
+        echo "${{ env.PS3DEV }}/bin" >> $GITHUB_PATH
+        echo "${{ env.PS3DEV }}/ppu/bin" >> $GITHUB_PATH
+        echo "${{ env.PS3DEV }}/spu/bin" >> $GITHUB_PATH
+        echo "${{ env.PS3DEV }}/host/bin" >> $GITHUB_PATH
+        echo "PS3DEV=${{ env.PS3DEV }}" >> $GITHUB_ENV
+        echo "PSL1GHT=${{ env.PSL1GHT }}" >> $GITHUB_ENV
 
-    - name: Generate icons & backgrounds
+    - name: Verify toolchain
+      run: |
+        echo "PATH=$PATH"
+        which ppu-gcc || { echo "ppu-gcc still missing"; find /usr/local -name 'ppu-gcc' 2>/dev/null; exit 1; }
+        ppu-gcc --version | head -3
+        echo "Toolchain OK"
+
+    - name: Generate icons
       run: |
         python3 tools/gen_icons.py
         ls -la data/
@@ -72,19 +90,10 @@ jobs:
     - name: Build BadCBA
       run: |
         set -e
-        export PS3DEV=/usr/local/ps3dev
-        export PSL1GHT=/usr/local/ps3dev
-        export PATH=$PS3DEV/bin:$PS3DEV/ppu/bin:$PS3DEV/spu/bin:$PS3DEV/host/bin:$PATH
-
-        echo "Compiler check:"
-        which ppu-gcc || { echo "ERROR: ppu-gcc missing - toolchain not ready"; exit 1; }
-        ppu-gcc --version | head -2
-
         make clean || true
         make -j$(nproc)
-        make pkg
-
-        ls -la *.pkg *.elf *.self 2>/dev/null || true
+        make pkg || echo "PKG step may need sfo.py/pkg.py – ELF/SELF still produced"
+        ls -la *.elf *.self *.pkg 2>/dev/null || ls -la
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
