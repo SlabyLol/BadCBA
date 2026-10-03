@@ -1,5 +1,5 @@
 /*
- * BadCBA - USB / filesystem browser with GUI rendering
+ * BadCBA - USB / filesystem browser (MP4 + MP3)
  */
 
 #include <stdio.h>
@@ -24,12 +24,18 @@ static int entry_count = 0;
 static int selected = 0;
 static char selected_path[MAX_PATH];
 
-static int is_mp3_file(const char *name)
+static int is_media_file(const char *name)
 {
     size_t len = strlen(name);
     if (len < 4) return 0;
     const char *ext = name + len - 4;
-    return (strcasecmp(ext, ".mp3") == 0);
+    if (strcasecmp(ext, ".mp4") == 0) return 1;
+    if (strcasecmp(ext, ".mp3") == 0) return 1;
+    if (len >= 5) {
+        const char *ext5 = name + len - 5;
+        if (strcasecmp(ext5, ".m4v") == 0) return 1;
+    }
+    return 0;
 }
 
 static void scan_dir(void)
@@ -56,7 +62,7 @@ static void scan_dir(void)
         if (stat(full, &st) != 0) continue;
 
         int isdir = S_ISDIR(st.st_mode);
-        if (!isdir && !is_mp3_file(de->d_name)) continue;
+        if (!isdir && !is_media_file(de->d_name)) continue;
 
         strncpy(entries[entry_count].name, de->d_name, 255);
         entries[entry_count].is_dir = isdir;
@@ -98,7 +104,7 @@ void filebrowser_enter(void)
 }
 
 int filebrowser_is_dir(void) { return entries[selected].is_dir; }
-int filebrowser_is_mp3(void) { return !entries[selected].is_dir && is_mp3_file(entries[selected].name); }
+int filebrowser_is_media(void) { return !entries[selected].is_dir && is_media_file(entries[selected].name); }
 
 const char *filebrowser_get_path(void)
 {

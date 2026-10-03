@@ -8,7 +8,7 @@ void filebrowser_up(void);
 void filebrowser_down(void);
 void filebrowser_enter(void);
 int  filebrowser_is_dir(void);
-int  filebrowser_is_mp3(void);
+int  filebrowser_is_media(void);
 const char *filebrowser_get_path(void);
 const char *filebrowser_get_current_dir(void);
 void filebrowser_render_gui(rsxBuffer *buf, int x, int y, int max_w);
