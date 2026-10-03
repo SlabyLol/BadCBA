@@ -3,28 +3,15 @@ name: Build BadCBA PKG
 on:
   push:
     branches: [ main ]
-    tags:
-      - 'v*'
+    tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
   release:
     types: [ published ]
   workflow_dispatch:
-    inputs:
-      create_release:
-        description: 'Create GitHub Release after build'
-        required: false
-        default: 'false'
-        type: boolean
-      version:
-        description: 'Version tag (e.g. v1.0.0) – only if create_release'
-        required: false
-        default: 'v1.0.0'
 
-# Required so GITHUB_TOKEN can create/update releases
 permissions:
   contents: write
-  actions: read
 
 env:
   PS3DEV: /usr/local/ps3dev
@@ -35,12 +22,10 @@ env:
 jobs:
   build:
     runs-on: ubuntu-24.04
-
+    # Skip release upload on pull_request only
     steps:
     - name: Checkout
       uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
 
     - name: Install host dependencies
       run: |
@@ -60,7 +45,7 @@ jobs:
       if: steps.cache.outputs.cache-hit != 'true'
       run: |
         set -e
-        wget -q --show-progress -O /tmp/ps3dev.tar.gz "${{ env.PS3DEV_URL }}"
+        wget -q -O /tmp/ps3dev.tar.gz "${{ env.PS3DEV_URL }}"
         sudo mkdir -p ${{ env.PS3DEV }}
         sudo tar -xzf /tmp/ps3dev.tar.gz -C /usr/local
         if [ -d /usr/local/ps3dev/ps3dev ]; then
@@ -88,15 +73,13 @@ jobs:
 
     - name: Verify toolchain
       run: |
-        which ppu-gcc || { echo "ppu-gcc missing"; exit 1; }
+        which ppu-gcc
         ppu-gcc --version | head -3
 
     - name: Sync version.dat
       run: |
         echo "${{ env.APP_VERSION }}" > version.dat
-        mkdir -p data
-        cp version.dat data/version.dat
-        echo "version.dat = $(cat version.dat)"
+        mkdir -p data && cp version.dat data/version.dat
 
     - name: Generate icons
       run: python3 tools/gen_icons.py
@@ -106,8 +89,7 @@ jobs:
         set -e
         make clean || true
         make -j$(nproc)
-        make pkg || echo "PKG optional"
-        echo "=== Build outputs ==="
+        make pkg || true
         ls -la BadCBA.elf BadCBA.self BadCBA.pkg version.dat 2>/dev/null || ls -la
 
     - name: Upload artifacts
@@ -123,59 +105,38 @@ jobs:
           data/PIC1.PNG
         if-no-files-found: warn
 
-    # ---- RELEASE ----
-    # Runs when: tag v* pushed, OR release published, OR manual workflow_dispatch with create_release
-    - name: Publish GitHub Release
-      id: release
-      if: |
-        startsWith(github.ref, 'refs/tags/v') ||
-        github.event_name == 'release' ||
-        (github.event_name == 'workflow_dispatch' && inputs.create_release == true)
+    # ALWAYS publish on main / tags / manual / release event (NOT on pull_request)
+    - name: Publish Release
+      if: github.event_name != 'pull_request'
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || (github.event_name == 'workflow_dispatch' && inputs.version) || github.ref_name }}
-        name: BadCBA ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.version || env.APP_VERSION }}
+        # On version tags use the tag; otherwise keep a rolling "latest" release
+        tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'latest' }}
+        name: ${{ startsWith(github.ref, 'refs/tags/v') && format('BadCBA {0}', github.ref_name) || format('BadCBA latest ({0})', env.APP_VERSION) }}
         body: |
           ## BadCBA – PS3 Custom Boot Maker (MP4)
 
-          | | |
-          |---|---|
-          | Version | `${{ env.APP_VERSION }}` |
-          | Commit | `${{ github.sha }}` |
+          - **Version:** `${{ env.APP_VERSION }}`
+          - **Commit:** `${{ github.sha }}`
+          - **Ref:** `${{ github.ref_name }}`
 
           ### Install
-          1. Copy **BadCBA.pkg** to a FAT32 USB
-          2. PS3 → Package Manager → Install Package Files
-          3. Launch **BadCBA** under Game in the XMB
+          1. Download **BadCBA.pkg**
+          2. Copy to USB → Package Manager → Install
+          3. Launch under Game in the XMB
 
-          ### Included
-          - `BadCBA.pkg` – installable package
-          - `BadCBA.elf` / `BadCBA.self` – raw binaries
-          - `version.dat` – `${{ env.APP_VERSION }}`
+          ### Files
+          - `BadCBA.pkg`
+          - `BadCBA.elf` / `BadCBA.self`
+          - `version.dat` (`${{ env.APP_VERSION }}`)
         files: |
           BadCBA.pkg
           BadCBA.elf
           BadCBA.self
           version.dat
         draft: false
-        prerelease: false
-        generate_release_notes: true
+        prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        make_latest: true
         fail_on_unmatched_files: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Release status
-      if: always()
-      run: |
-        echo "Event: ${{ github.event_name }}"
-        echo "Ref:   ${{ github.ref }}"
-        echo "Release step ran when tag v*, release event, or manual create_release."
-        if [ "${{ steps.release.outcome }}" = "success" ]; then
-          echo "Release published successfully."
-        elif [ "${{ steps.release.outcome }}" = "skipped" ]; then
-          echo "Release skipped (expected on normal main pushes)."
-          echo "To publish: git tag v1.0.0 && git push origin v1.0.0"
-          echo "Or: Actions → Run workflow → enable create_release"
-        else
-          echo "Release outcome: ${{ steps.release.outcome }}"
-        fi
