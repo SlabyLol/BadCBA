@@ -1,11 +1,15 @@
 # BadCBA
 
-**Bad Custom Boot Audio** – Create custom PS3 coldboot from **MP4** directly on your console.
+**BadCustomBootAnimation** – Create custom PS3 coldboot animations from **MP4** directly on your console.
 
 BadCBA is a native PS3 homebrew app with a full on-screen GUI.  
-Install the PKG, pick an **MP4** from USB, convert it and build your custom boot package – all on the PS3.
+Install the PKG, pick an **MP4** from USB, convert it into a custom boot animation package – all on the PS3.
 
 ![BadCBA](https://img.shields.io/badge/PS3-Homebrew-purple) ![Input](https://img.shields.io/badge/input-MP4-cyan) ![License](https://img.shields.io/badge/license-MIT-blue)
+
+## What BadCBA means
+
+**Bad** **C**ustom **B**oot **A**nimation
 
 ## Features
 
@@ -17,9 +21,9 @@ Install the PKG, pick an **MP4** from USB, convert it and build your custom boot
 
 ### Media support
 - **Primary input: MP4** (also accepts MP3 / M4V)
-- USB file browser filters for media files
-- Extract audio → `coldboot_stereo.ac3` + `coldboot_multi.ac3`
-- Optional path for video frames → `coldboot.raf`
+- USB file browser for media files
+- Video frames → `coldboot.raf` (boot animation)
+- Audio track → `coldboot_stereo.ac3` + `coldboot_multi.ac3`
 
 ### Settings
 - Max duration (1–8 s)
@@ -69,10 +73,10 @@ make pkg
 
 ```
 BadCBA/
-├── source/          # main, gui, filebrowser, settings, audio, pkg
+├── source/          # main, gui, filebrowser, settings, audio, pkg, rsxutil
 ├── include/
-├── data/            # ICON0.PNG, PIC1.PNG (auto-generated)
-├── tools/           # gen_icons.py
+├── data/            # ICON0.PNG, PIC1.PNG, version.dat
+├── tools/           # gen_icons.py, sfo.py, pkg.py
 ├── Makefile
 └── .github/workflows/
 ```
