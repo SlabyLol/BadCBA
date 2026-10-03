@@ -73,21 +73,28 @@ else
 endif
 
 pkg: $(TARGET).self icons version
-	@rm -rf pkg && mkdir -p pkg/USRDIR
+	@rm -rf pkg && mkdir -p pkg/USRDIR/icons
 	@cp $(TARGET).self pkg/USRDIR/EBOOT.BIN
 	@cp version.dat pkg/USRDIR/version.dat
+	@# PS3 package graphics
 	@test -f $(DATA)/ICON0.PNG && cp $(DATA)/ICON0.PNG pkg/ || true
 	@test -f $(DATA)/PIC1.PNG && cp $(DATA)/PIC1.PNG pkg/ || true
-	@# Error sound lives in repo root
+	@test -f $(DATA)/PIC0.PNG && cp $(DATA)/PIC0.PNG pkg/ || true
+	@# Extra assets inside USRDIR
+	@test -f $(DATA)/SPLASH.PNG && cp $(DATA)/SPLASH.PNG pkg/USRDIR/ || true
+	@test -f $(DATA)/logo_128.png && cp $(DATA)/logo_*.png pkg/USRDIR/ || true
+	@test -d $(DATA)/icons && cp $(DATA)/icons/*.png pkg/USRDIR/icons/ 2>/dev/null || true
+	@# Error sound (repo root)
 	@if [ -f error-cba.wav ]; then cp error-cba.wav pkg/USRDIR/error-cba.wav; \
 	 elif [ -f $(DATA)/error-cba.wav ]; then cp $(DATA)/error-cba.wav pkg/USRDIR/; \
 	 else echo "Warning: error-cba.wav not found"; fi
 	@python3 $(SFO_PY) -f sfo.xml pkg/PARAM.SFO 2>/dev/null || true
 	@python3 $(PKG_PY) --contentid $(CONTENTID) pkg/ $(TARGET).pkg 2>/dev/null || true
-	@ls -la $(TARGET).pkg pkg/USRDIR/ 2>/dev/null || echo "ELF/SELF ready"
+	@ls -la $(TARGET).pkg pkg/ pkg/USRDIR/ 2>/dev/null || echo "ELF/SELF ready"
 
 icons:
-	@mkdir -p $(DATA) && python3 tools/gen_icons.py
+	@mkdir -p $(DATA)/icons
+	@python3 tools/gen_icons.py
 
 clean:
 	@rm -rf $(BUILD) $(TARGET).elf $(TARGET).self $(TARGET).pkg pkg
