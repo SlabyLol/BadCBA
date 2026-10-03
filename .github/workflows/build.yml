@@ -1,0 +1,47 @@
+name: Build BadCBA PKG
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  release:
+    types: [ published ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set up PS3 toolchain (placeholder)
+      run: |
+        echo "PS3 toolchain setup would go here."
+        echo "Common approach: use a pre-built Docker image containing ps3toolchain + PSL1GHT."
+        echo "Example:"
+        echo "  docker run --rm -v $PWD:/src ps3dev/psl1ght make pkg"
+
+    - name: Build (simulated)
+      run: |
+        echo "Building BadCBA..."
+        mkdir -p build
+        echo "BadCBA build placeholder - replace with real toolchain steps" > build/BUILD_INFO.txt
+        echo "Once the Docker image is configured, this job will produce BadCBA.pkg"
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: BadCBA-build
+        path: |
+          *.pkg
+          build/
+
+    - name: Upload release asset
+      if: github.event_name == 'release'
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          BadCBA.pkg
