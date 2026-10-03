@@ -38,7 +38,7 @@ LIBPATHS :=
 ifneq ($(strip $(PS3DEV)),)
   LIBPATHS += -L$(PS3DEV)/ppu/lib
 endif
-LIBS := -lrsx -lgcm_sys -lio -lsysutil -lrt -llv2 -lm -lsysmodule -lnet -lsysfs -laudio
+LIBS := -lrsx -lgcm_sys -lio -lsysutil -lrt -llv2 -lm -lsysmodule -lnet -lsysfs
 CFLAGS := -O2 -Wall $(INCLUDE)
 LDFLAGS := $(LIBPATHS) $(LIBS)
 VPATH := $(SOURCES)
