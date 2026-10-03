@@ -78,10 +78,13 @@ pkg: $(TARGET).self icons version
 	@cp version.dat pkg/USRDIR/version.dat
 	@test -f $(DATA)/ICON0.PNG && cp $(DATA)/ICON0.PNG pkg/ || true
 	@test -f $(DATA)/PIC1.PNG && cp $(DATA)/PIC1.PNG pkg/ || true
-	@test -f $(DATA)/error-cba.wav && cp $(DATA)/error-cba.wav pkg/USRDIR/ || true
+	@# Error sound lives in repo root
+	@if [ -f error-cba.wav ]; then cp error-cba.wav pkg/USRDIR/error-cba.wav; \
+	 elif [ -f $(DATA)/error-cba.wav ]; then cp $(DATA)/error-cba.wav pkg/USRDIR/; \
+	 else echo "Warning: error-cba.wav not found"; fi
 	@python3 $(SFO_PY) -f sfo.xml pkg/PARAM.SFO 2>/dev/null || true
 	@python3 $(PKG_PY) --contentid $(CONTENTID) pkg/ $(TARGET).pkg 2>/dev/null || true
-	@ls -la $(TARGET).pkg 2>/dev/null || echo "ELF/SELF ready"
+	@ls -la $(TARGET).pkg pkg/USRDIR/ 2>/dev/null || echo "ELF/SELF ready"
 
 icons:
 	@mkdir -p $(DATA) && python3 tools/gen_icons.py
