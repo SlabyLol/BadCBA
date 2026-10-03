@@ -1,7 +1,4 @@
-#==============================================================================
-# BadCBA - PS3 Custom Boot Maker
-#==============================================================================
-
+# BadCBA Makefile
 ifneq ($(strip $(PS3DEV)),)
   export PATH := $(PS3DEV)/bin:$(PS3DEV)/ppu/bin:$(PS3DEV)/spu/bin:$(PATH)
 endif
@@ -11,12 +8,12 @@ endif
 
 PPU_CC     := $(shell which ppu-gcc 2>/dev/null)
 SPRXLINKER := $(shell which sprxlinker 2>/dev/null)
-MAKE_SELF  := $(shell which make_self_npdrm 2>/dev/null || which make_fself 2>/dev/null || which fself 2>/dev/null)
+MAKE_SELF  := $(shell which make_self_npdrm 2>/dev/null || which make_fself 2>/dev/null)
 SFO_PY     := $(shell which sfo.py 2>/dev/null || echo "$(CURDIR)/tools/sfo.py")
 PKG_PY     := $(shell which pkg.py 2>/dev/null || echo "$(CURDIR)/tools/pkg.py")
 
 ifeq ($(PPU_CC),)
-  $(error ppu-gcc not found – set PS3DEV/PSL1GHT)
+  $(error ppu-gcc not found)
 endif
 
 APP_TITLE   := BadCBA
@@ -24,48 +21,35 @@ APP_TITLEID := BCBA00001
 APP_VERSION := 01.00
 CONTENTID   := UP0001-BCBA00001_00-0000000000000000
 
-TARGET   := $(APP_TITLE)
-BUILD    := build
-SOURCES  := source
+TARGET := $(APP_TITLE)
+BUILD  := build
+SOURCES := source
 INCLUDES := include
-DATA     := data
+DATA := data
 
-CFILES  := $(notdir $(wildcard $(SOURCES)/*.c))
-OFILES  := $(CFILES:.c=.o)
+CFILES := $(notdir $(wildcard $(SOURCES)/*.c))
+OFILES := $(CFILES:.c=.o)
 
 INCLUDE := -I$(CURDIR)/$(INCLUDES)
 ifneq ($(strip $(PS3DEV)),)
   INCLUDE += -I$(PS3DEV)/ppu/include
 endif
-ifneq ($(strip $(PSL1GHT)),)
-  INCLUDE += -I$(PSL1GHT)/ppu/include -I$(PSL1GHT)/include
-endif
-
 LIBPATHS :=
 ifneq ($(strip $(PS3DEV)),)
   LIBPATHS += -L$(PS3DEV)/ppu/lib
 endif
-ifneq ($(strip $(PSL1GHT)),)
-  LIBPATHS += -L$(PSL1GHT)/ppu/lib
-endif
-
-LIBS    := -lrsx -lgcm_sys -lio -lsysutil -lrt -llv2 -lm -lsysmodule -lnet -lsysfs
-CFLAGS  := -O2 -Wall $(INCLUDE)
+LIBS := -lrsx -lgcm_sys -lio -lsysutil -lrt -llv2 -lm -lsysmodule -lnet -lsysfs -laudio
+CFLAGS := -O2 -Wall $(INCLUDE)
 LDFLAGS := $(LIBPATHS) $(LIBS)
-VPATH   := $(SOURCES)
+VPATH := $(SOURCES)
 
-.PHONY: all clean pkg check-toolchain icons version
+.PHONY: all clean pkg icons version
 
-all: check-toolchain version $(TARGET).elf
-
-check-toolchain:
-	@echo "Using compiler: $(PPU_CC)"
-	@$(PPU_CC) --version | head -1
+all: version $(TARGET).elf
 
 version:
 	@echo "$(APP_VERSION)" > version.dat
-	@mkdir -p $(DATA)
-	@cp version.dat $(DATA)/version.dat
+	@mkdir -p $(DATA) && cp version.dat $(DATA)/version.dat
 
 $(BUILD):
 	@mkdir -p $(BUILD)
@@ -80,48 +64,27 @@ $(TARGET).elf: $(addprefix $(BUILD)/,$(OFILES))
 ifneq ($(SPRXLINKER),)
 	@$(SPRXLINKER) $@ 2>/dev/null || true
 endif
-	@echo "Built $@"
 
-# SELF: prefer make_self / make_fself; fallback copy ELF
 $(TARGET).self: $(TARGET).elf
-	@echo "[SELF] $@"
 ifneq ($(MAKE_SELF),)
-	@$(MAKE_SELF) $< $@ $(CONTENTID) 2>/dev/null || \
-	 $(MAKE_SELF) $< $@ 2>/dev/null || \
-	 cp $< $@
+	@$(MAKE_SELF) $< $@ $(CONTENTID) 2>/dev/null || $(MAKE_SELF) $< $@ 2>/dev/null || cp $< $@
 else
 	@cp $< $@
-	@echo "  (no make_self – copied ELF as SELF)"
 endif
 
 pkg: $(TARGET).self icons version
-	@echo "=== Creating PKG ==="
-	@rm -rf pkg
-	@mkdir -p pkg/USRDIR
+	@rm -rf pkg && mkdir -p pkg/USRDIR
 	@cp $(TARGET).self pkg/USRDIR/EBOOT.BIN
 	@cp version.dat pkg/USRDIR/version.dat
 	@test -f $(DATA)/ICON0.PNG && cp $(DATA)/ICON0.PNG pkg/ || true
-	@test -f $(DATA)/PIC1.PNG  && cp $(DATA)/PIC1.PNG  pkg/ || true
-	@echo "Generating PARAM.SFO..."
-	@python3 $(SFO_PY) --title "$(APP_TITLE)" --appid "$(APP_TITLEID)" \
-		--appver "$(APP_VERSION)" --category "HG" \
-		-f sfo.xml pkg/PARAM.SFO 2>/dev/null || \
-	 python3 $(SFO_PY) -f sfo.xml pkg/PARAM.SFO 2>/dev/null || \
-	 echo "  sfo.py fallback used or missing"
-	@echo "Building $(TARGET).pkg ..."
-	@python3 $(PKG_PY) --contentid $(CONTENTID) pkg/ $(TARGET).pkg 2>/dev/null || \
-	 python3 $(PKG_PY) pkg/ $(TARGET).pkg 2>/dev/null || \
-	 echo "  pkg.py failed – check tools/pkg.py"
-	@if [ -f $(TARGET).pkg ]; then \
-		echo "PKG ready: $(TARGET).pkg"; ls -la $(TARGET).pkg; \
-	 else \
-		echo "No PKG produced (ELF/SELF still available)"; \
-	 fi
+	@test -f $(DATA)/PIC1.PNG && cp $(DATA)/PIC1.PNG pkg/ || true
+	@test -f $(DATA)/error-cba.wav && cp $(DATA)/error-cba.wav pkg/USRDIR/ || true
+	@python3 $(SFO_PY) -f sfo.xml pkg/PARAM.SFO 2>/dev/null || true
+	@python3 $(PKG_PY) --contentid $(CONTENTID) pkg/ $(TARGET).pkg 2>/dev/null || true
+	@ls -la $(TARGET).pkg 2>/dev/null || echo "ELF/SELF ready"
 
 icons:
-	@mkdir -p $(DATA)
-	@python3 tools/gen_icons.py
+	@mkdir -p $(DATA) && python3 tools/gen_icons.py
 
 clean:
 	@rm -rf $(BUILD) $(TARGET).elf $(TARGET).self $(TARGET).pkg pkg
-	@echo "Clean done."

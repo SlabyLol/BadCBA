@@ -1,8 +1,5 @@
 /*
- * BadCBA - Flash install / backup for custom coldboot animation
- *
- * Writes to /dev_blind/vsh/resource/ (CFW writable flash mirror).
- * Always backs up originals first when settings say so.
+ * BadCBA - Flash install / backup
  */
 
 #include <stdio.h>
@@ -15,19 +12,14 @@
 #include "flash.h"
 #include "settings.h"
 #include "audio.h"
+#include "error.h"
 
 static char status_msg[256] = "";
 static char found_usb[64] = "";
 
 static const char *usb_candidates[] = {
-    "/dev_usb000",
-    "/dev_usb001",
-    "/dev_usb002",
-    "/dev_usb003",
-    "/dev_usb004",
-    "/dev_usb005",
-    "/dev_usb006",
-    NULL
+    "/dev_usb000", "/dev_usb001", "/dev_usb002", "/dev_usb003",
+    "/dev_usb004", "/dev_usb005", "/dev_usb006", NULL
 };
 
 static const char *flash_res = "/dev_blind/vsh/resource";
@@ -35,17 +27,13 @@ static const char *backup_dir = "/dev_hdd0/game/BCBA00001/USRDIR/backup_coldboot
 static const char *work_dir   = "/dev_hdd0/tmp/badcba";
 
 static const char *coldboot_files[] = {
-    "coldboot.raf",
-    "coldboot_stereo.ac3",
-    "coldboot_multi.ac3",
-    NULL
+    "coldboot.raf", "coldboot_stereo.ac3", "coldboot_multi.ac3", NULL
 };
 
 static void set_status(const char *msg)
 {
     strncpy(status_msg, msg, sizeof(status_msg) - 1);
     status_msg[sizeof(status_msg) - 1] = '\0';
-    printf("%s\n", status_msg);
 }
 
 const char *flash_get_status(void)
@@ -78,7 +66,6 @@ static int copy_file(const char *src, const char *dst)
     if (!in) return -1;
     FILE *out = fopen(dst, "wb");
     if (!out) { fclose(in); return -1; }
-
     char buf[8192];
     size_t n;
     while ((n = fread(buf, 1, sizeof(buf), in)) > 0) {
@@ -87,23 +74,20 @@ static int copy_file(const char *src, const char *dst)
             return -1;
         }
     }
-    fclose(in);
-    fclose(out);
+    fclose(in); fclose(out);
     return 0;
 }
 
 static int ensure_dir(const char *path)
 {
     struct stat st;
-    if (stat(path, &st) == 0 && S_ISDIR(st.st_mode))
-        return 0;
+    if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) return 0;
     return mkdir(path, 0777);
 }
 
 int flash_backup_originals(void)
 {
     set_status("Backing up original coldboot files...");
-
     ensure_dir("/dev_hdd0/game");
     ensure_dir("/dev_hdd0/game/BCBA00001");
     ensure_dir("/dev_hdd0/game/BCBA00001/USRDIR");
@@ -114,87 +98,72 @@ int flash_backup_originals(void)
         char src[512], dst[512];
         snprintf(src, sizeof(src), "%s/%s", flash_res, coldboot_files[i]);
         snprintf(dst, sizeof(dst), "%s/%s", backup_dir, coldboot_files[i]);
-
-        if (access(src, R_OK) != 0) {
-            /* also try /dev_flash if blind not mounted yet */
+        if (access(src, R_OK) != 0)
             snprintf(src, sizeof(src), "/dev_flash/vsh/resource/%s", coldboot_files[i]);
-        }
-
-        if (copy_file(src, dst) == 0) {
-            ok++;
-            printf("  backed up %s\n", coldboot_files[i]);
-        }
+        if (copy_file(src, dst) == 0) ok++;
     }
 
     if (ok == 0) {
-        set_status("Backup failed (no flash access?). Enable /dev_blind.");
+        error_raise(ERR_FLASH_BACKUP);
+        set_status(error_get_message());
         return -1;
     }
-
-    char msg[128];
-    snprintf(msg, sizeof(msg), "Backup OK (%d files) -> USRDIR/backup_coldboot", ok);
-    set_status(msg);
+    snprintf(status_msg, sizeof(status_msg), "Backup OK (%d files)", ok);
     return 0;
 }
 
 int flash_install_to_vsh(void)
 {
-    set_status("Installing custom coldboot to flash...");
-
-    /* Ensure USB was used for source – user flow requires USB for MP4 */
     if (!flash_usb_present()) {
-        set_status("Uppss!! We found no USB! Please insert an USB to continue! (err:726)");
+        error_raise(ERR_USB_NOT_FOUND);
+        set_status(error_get_message());
         return -726;
     }
 
-    if (settings_get_backup()) {
-        if (flash_backup_originals() != 0) {
-            /* continue only if user disabled strict backup – still try install */
-            printf("Warning: backup incomplete, continuing install...\n");
-        }
+    if (settings_get_backup())
+        flash_backup_originals();
+
+    if (access("/dev_blind", F_OK) != 0) {
+        error_raise(ERR_FLASH_NO_BLIND);
+        set_status(error_get_message());
+        return -1;
     }
 
-    /* Target paths */
-    ensure_dir("/dev_blind");
     ensure_dir("/dev_blind/vsh");
     ensure_dir("/dev_blind/vsh/resource");
 
-    int installed = 0;
+    int installed = 0, missing = 0;
     for (int i = 0; coldboot_files[i]; i++) {
         char src[512], dst[512];
         snprintf(src, sizeof(src), "%s/%s", work_dir, coldboot_files[i]);
         snprintf(dst, sizeof(dst), "%s/%s", flash_res, coldboot_files[i]);
-
-        if (access(src, R_OK) != 0) {
-            printf("  skip missing %s\n", coldboot_files[i]);
-            continue;
-        }
-
-        if (copy_file(src, dst) == 0) {
-            installed++;
-            printf("  installed %s\n", coldboot_files[i]);
-        } else {
-            printf("  FAILED %s (need CFW + /dev_blind)\n", coldboot_files[i]);
+        if (access(src, R_OK) != 0) { missing++; continue; }
+        if (copy_file(src, dst) == 0) installed++;
+        else {
+            error_raise(ERR_FLASH_PERMISSION);
+            set_status(error_get_message());
+            return -1;
         }
     }
 
     if (installed == 0) {
-        set_status("Install failed. Convert first + enable flash write (/dev_blind).");
+        error_raise(missing ? ERR_FLASH_MISSING_SRC : ERR_FLASH_INSTALL);
+        set_status(error_get_message());
         return -1;
     }
 
-    char msg[160];
-    snprintf(msg, sizeof(msg),
-             "Installed %d file(s) to flash. Reboot to see your animation!",
-             installed);
-    set_status(msg);
+    snprintf(status_msg, sizeof(status_msg),
+             "Installed %d file(s). Reboot to see your animation!", installed);
     return 0;
 }
 
 int flash_restore_backup(void)
 {
-    set_status("Restoring original coldboot from backup...");
-
+    if (access("/dev_blind", F_OK) != 0) {
+        error_raise(ERR_FLASH_NO_BLIND);
+        set_status(error_get_message());
+        return -1;
+    }
     ensure_dir("/dev_blind/vsh/resource");
 
     int ok = 0;
@@ -202,17 +171,13 @@ int flash_restore_backup(void)
         char src[512], dst[512];
         snprintf(src, sizeof(src), "%s/%s", backup_dir, coldboot_files[i]);
         snprintf(dst, sizeof(dst), "%s/%s", flash_res, coldboot_files[i]);
-        if (copy_file(src, dst) == 0)
-            ok++;
+        if (copy_file(src, dst) == 0) ok++;
     }
-
     if (ok == 0) {
-        set_status("Restore failed – no backup found or no flash write.");
+        error_raise(ERR_FLASH_RESTORE);
+        set_status(error_get_message());
         return -1;
     }
-
-    char msg[128];
-    snprintf(msg, sizeof(msg), "Restored %d original file(s). Reboot PS3.", ok);
-    set_status(msg);
+    snprintf(status_msg, sizeof(status_msg), "Restored %d file(s). Reboot.", ok);
     return 0;
 }

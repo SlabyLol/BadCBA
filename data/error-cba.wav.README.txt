@@ -1,0 +1,10 @@
+Place your error sound here as:
+
+  error-cba.wav
+
+Path inside the installed game:
+  /dev_hdd0/game/BCBA00001/USRDIR/error-cba.wav
+
+When any error is raised, BadCBA loops this WAV until the user presses X or O.
+
+Format tip: 16-bit PCM WAV, mono or stereo, 44100 or 48000 Hz.
