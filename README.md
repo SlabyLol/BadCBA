@@ -2,130 +2,115 @@
 
 **Bad Custom Boot Audio** – Create custom PS3 coldboot sounds directly on your console.
 
-BadCBA is a full PS3 homebrew application (installable as PKG) that lets you select an MP3 from USB, convert it into a proper PS3 coldboot audio package, and install or export it – all from a clean on-console GUI.
+BadCBA is a full native PS3 homebrew application with a real on-screen GUI.  
+Install the PKG, launch it from the XMB, select an MP3 from USB and create your custom boot sound package – all on the PS3.
+
+![BadCBA](https://img.shields.io/badge/PS3-Homebrew-purple) ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ## Features
 
-- **On-console GUI** – Native PS3 interface, controller navigation
-- **USB File Browser** – Browse any USB drive and select `.mp3` files
-- **MP3 Preview** – Play the selected track before conversion (limited by available audio libs)
-- **Audio Conversion Pipeline**
-  - Trim to safe coldboot length (max ~8 seconds recommended)
-  - Fade in / Fade out
-  - Volume adjustment
-  - Stereo / Multi-channel AC3 output (`coldboot_stereo.ac3` + `coldboot_multi.ac3`)
-- **PKG Builder** – Generate a ready-to-install coldboot package
-- **Safe Install Options**
-  - Export files to USB for manual installation via multiMAN / IrisMAN
-  - Create an installer PKG that copies the files to the correct locations
-- **Extensive Settings**
-  - Max duration (1–8 s)
-  - Fade duration
+### Real On-Screen GUI
+- Dark modern theme with accent colors
+- Full controller navigation (Up/Down/Left/Right + X / O)
+- Smooth menus, file browser, settings, convert screen
+- Bitmap font rendering directly on the RSX framebuffer
+
+### Core Functions
+- **USB File Browser** – Browse any connected USB and pick `.mp3` files
+- **Settings**
+  - Max duration (1–8 seconds)
   - Volume (0–100 %)
-  - Sample rate handling
-  - Content ID / Title ID for generated PKGs
-  - Custom package name & version
-  - Auto-create coldboot.raf placeholder support
-  - Backup existing coldboot files before overwrite
-- **GitHub Actions** – Automatic builds of the `.pkg` on every release / tag
+  - Fade in / fade out (0–2000 ms)
+  - Backup existing coldboot files
+  - Sample rate (44100 / 48000 Hz)
+  - Content ID & PKG name
+- **Convert & Create PKG** – Prepare coldboot audio package
+- **Export to USB** – Write files + README to `/dev_usb000/BadCBA_Coldboot/`
+
+### Technical
+- Native PSL1GHT application
+- Dual-buffered RSX rendering
+- Proper sysutil exit handling
+- Ready for real AC3 encoding libraries
 
 ## Requirements
 
-- PS3 with CFW or PS3HEN
-- USB drive (FAT32) containing your `.mp3` files
-- multiMAN / IrisMAN / webMAN recommended for flash write access (if using direct install)
+- PS3 with **CFW** or **PS3HEN**
+- USB drive (FAT32) with your MP3 files
+- multiMAN / IrisMAN / webMAN recommended for advanced flash operations
 
 ## Installation
 
-1. Download the latest `BadCBA.pkg` from the [Releases](https://github.com/SlabyLol/BadCBA/releases) page.
-2. Copy it to a USB drive.
-3. On the PS3 go to **Package Manager → Install Package Files** and install BadCBA.
-4. Launch **BadCBA** from the XMB under Game.
+1. Download `BadCBA.pkg` from [Releases](https://github.com/SlabyLol/BadCBA/releases)
+2. Copy to USB
+3. On PS3: **Package Manager → Install Package Files**
+4. Launch **BadCBA** under Game in the XMB
 
 ## How to use
 
-1. Insert a USB stick with your MP3 files.
-2. Open BadCBA.
-3. Navigate to **Select MP3 from USB**.
-4. Choose your file.
-5. Adjust settings (duration, fade, volume, etc.).
-6. Press **Convert & Create PKG** or **Export to USB**.
-7. Install the generated package or copy the AC3 files manually.
+1. Plug in USB with MP3s
+2. Start BadCBA
+3. Choose **Select MP3 from USB**
+4. Navigate and press **X** on your file
+5. Adjust **Settings** if needed
+6. Go to **Convert & Create PKG** and press **X**
+7. Or use **Export to USB** for manual installation
 
-## Coldboot Files Explained
-
-A custom coldboot usually consists of:
-
-| File                  | Purpose                          |
-|-----------------------|----------------------------------|
-| `coldboot_stereo.ac3` | Main stereo boot sound           |
-| `coldboot_multi.ac3`  | Multi-channel version            |
-| `coldboot.raf`        | Boot animation (logo)            |
-
-BadCBA focuses on the audio part and can generate the two AC3 files + an installer PKG. The `.raf` can be provided separately or left as original.
-
-**Important:** Writing to `/dev_flash` / `/dev_blind` can brick your console if done incorrectly. Always keep a backup and prefer the safer “Export to USB + manual copy” method.
-
-## Building from Source
+## Building
 
 ### Prerequisites
 
-- Linux (recommended) or WSL
-- [ps3toolchain](https://github.com/ps3dev/ps3toolchain)
-- [PSL1GHT](https://github.com/ps3dev/PSL1GHT)
-
 ```bash
-export PS3DEV=/usr/local/ps3dev
+# Install ps3toolchain + PSL1GHT first
+export PS3DEV=/usr/local/ps3dev   # or /opt/ps3dev
 export PSL1GHT=$PS3DEV/psl1ght
 export PATH=$PATH:$PS3DEV/bin:$PS3DEV/ppu/bin:$PS3DEV/spu/bin:$PSL1GHT/host/bin
 ```
 
-### Build
+### Build commands
 
 ```bash
 git clone https://github.com/SlabyLol/BadCBA.git
 cd BadCBA
-make
-make pkg
+make          # builds BadCBA.elf
+make pkg      # creates BadCBA.pkg
 ```
 
-The resulting `BadCBA.pkg` will be in the project root.
+### GitHub Actions
 
-## Project Structure
+Every push and release triggers a build workflow.  
+Once a full toolchain cache is available, the workflow produces a ready-to-install `.pkg`.
+
+## Project structure
 
 ```
 BadCBA/
 ├── source/
-│   ├── main.c              # Entry point & main loop
-│   ├── gui.c / gui.h       # GUI rendering & menus
-│   ├── filebrowser.c       # USB / HDD file browser
-│   ├── audio.c             # MP3 handling & conversion stubs
-│   ├── pkg.c               # PKG generation helpers
-│   └── settings.c          # Persistent settings
+│   ├── main.c          # Entry, video init, main loop
+│   ├── gui.c           # Full RSX on-screen GUI + font
+│   ├── filebrowser.c   # USB browser with GUI
+│   ├── settings.c      # Settings + GUI
+│   ├── audio.c         # Conversion & export
+│   └── pkg.c           # Package helpers
 ├── include/
-├── data/                   # Icons, fonts, default assets
-├── Makefile
-├── sfo.xml                 # PARAM.SFO template
-├── .github/workflows/      # CI for automatic PKG builds
-└── README.md
+├── data/               # ICON0.PNG, PIC1.PNG
+├── Makefile            # Real PSL1GHT build
+├── sfo.xml
+└── .github/workflows/  # CI
 ```
 
-## GitHub Actions
+## Important safety notes
 
-Every push to `main` and every tag triggers a full build using a pre-configured PS3 toolchain Docker image. The resulting `.pkg` is uploaded as a release artifact.
-
-## Disclaimer
-
-- This is homebrew for CFW / HEN only.
-- Incorrect use of flash write tools can permanently damage your console.
-- Use at your own risk.
-- BadCBA does not contain any copyrighted Sony files.
+- Writing to `/dev_flash` or `/dev_blind` can brick your console
+- Always keep backups of original coldboot files
+- Prefer the **Export to USB** method + manual copy with multiMAN
+- BadCBA itself does not write to flash by default
 
 ## Credits
 
 - PSL1GHT / ps3dev community
-- multiMAN / IrisMAN / webMAN authors
-- Everyone who documented the coldboot AC3 / RAF formats
+- multiMAN, IrisMAN, webMAN authors
+- Everyone who documented coldboot AC3 / RAF formats
 
 ## License
 

@@ -1,5 +1,5 @@
 /*
- * BadCBA - USB / filesystem browser
+ * BadCBA - USB / filesystem browser with GUI rendering
  */
 
 #include <stdio.h>
@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 
 #include "filebrowser.h"
+#include "gui.h"
 
 #define MAX_ENTRIES 256
 #define MAX_PATH    512
@@ -37,12 +38,8 @@ static void scan_dir(void)
     selected = 0;
 
     DIR *dir = opendir(current_dir);
-    if (!dir) {
-        printf("Cannot open directory: %s\n", current_dir);
-        return;
-    }
+    if (!dir) return;
 
-    /* Add ".." entry */
     strcpy(entries[entry_count].name, "..");
     entries[entry_count].is_dir = 1;
     entry_count++;
@@ -56,92 +53,77 @@ static void scan_dir(void)
         snprintf(full, sizeof(full), "%s/%s", current_dir, de->d_name);
 
         struct stat st;
-        if (stat(full, &st) != 0)
-            continue;
+        if (stat(full, &st) != 0) continue;
 
         int isdir = S_ISDIR(st.st_mode);
-        if (!isdir && !is_mp3_file(de->d_name))
-            continue;
+        if (!isdir && !is_mp3_file(de->d_name)) continue;
 
-        strncpy(entries[entry_count].name, de->d_name, sizeof(entries[0].name) - 1);
+        strncpy(entries[entry_count].name, de->d_name, 255);
         entries[entry_count].is_dir = isdir;
         entry_count++;
     }
-
     closedir(dir);
 }
 
 void filebrowser_open(const char *path)
 {
-    strncpy(current_dir, path, sizeof(current_dir) - 1);
-    current_dir[sizeof(current_dir) - 1] = '\0';
+    strncpy(current_dir, path, MAX_PATH - 1);
     scan_dir();
 }
 
 void filebrowser_up(void)
 {
-    if (selected > 0)
-        selected--;
+    if (selected > 0) selected--;
 }
 
 void filebrowser_down(void)
 {
-    if (selected < entry_count - 1)
-        selected++;
+    if (selected < entry_count - 1) selected++;
 }
 
 void filebrowser_enter(void)
 {
-    if (!entries[selected].is_dir)
-        return;
+    if (!entries[selected].is_dir) return;
 
     if (strcmp(entries[selected].name, "..") == 0) {
-        /* go up */
         char *slash = strrchr(current_dir, '/');
-        if (slash && slash != current_dir) {
-            *slash = '\0';
-        } else {
-            strcpy(current_dir, "/");
-        }
+        if (slash && slash != current_dir) *slash = '\0';
+        else strcpy(current_dir, "/");
     } else {
         char newpath[MAX_PATH];
         snprintf(newpath, sizeof(newpath), "%s/%s", current_dir, entries[selected].name);
-        strncpy(current_dir, newpath, sizeof(current_dir) - 1);
+        strncpy(current_dir, newpath, MAX_PATH - 1);
     }
     scan_dir();
 }
 
-int filebrowser_is_dir(void)
-{
-    return entries[selected].is_dir;
-}
-
-int filebrowser_is_mp3(void)
-{
-    return !entries[selected].is_dir && is_mp3_file(entries[selected].name);
-}
+int filebrowser_is_dir(void) { return entries[selected].is_dir; }
+int filebrowser_is_mp3(void) { return !entries[selected].is_dir && is_mp3_file(entries[selected].name); }
 
 const char *filebrowser_get_path(void)
 {
-    snprintf(selected_path, sizeof(selected_path), "%s/%s",
-             current_dir, entries[selected].name);
+    snprintf(selected_path, sizeof(selected_path), "%s/%s", current_dir, entries[selected].name);
     return selected_path;
 }
 
-const char *filebrowser_get_current_dir(void)
-{
-    return current_dir;
-}
+const char *filebrowser_get_current_dir(void) { return current_dir; }
 
-void filebrowser_render(void)
+void filebrowser_render_gui(rsxBuffer *buf, int x, int y, int max_w)
 {
-    int start = selected - 8;
+    int start = selected - 6;
     if (start < 0) start = 0;
 
-    for (int i = start; i < entry_count && i < start + 16; i++) {
-        printf("  %s %s%s\n",
-               (i == selected) ? ">" : " ",
-               entries[i].name,
-               entries[i].is_dir ? "/" : "");
+    for (int i = start; i < entry_count && i < start + 12; i++) {
+        char line[300];
+        snprintf(line, sizeof(line), "%s%s", entries[i].name, entries[i].is_dir ? "/" : "");
+
+        if (i == selected) {
+            gui_draw_rect(buf, x - 10, y - 6, max_w, 32, 0xFF2D2D44);
+            gui_draw_rect(buf, x - 10, y - 6, 5, 32, 0xFF6C5CE7);
+            gui_draw_text(buf, x + 10, y, line, 0xFFEEEEF5);
+        } else {
+            gui_draw_text(buf, x + 10, y, line, 0xFF8888AA);
+        }
+        y += 36;
     }
 }
