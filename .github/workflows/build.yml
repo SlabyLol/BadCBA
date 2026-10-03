@@ -3,6 +3,8 @@ name: Build BadCBA PKG
 on:
   push:
     branches: [ main ]
+    tags:
+      - 'v*'
   pull_request:
     branches: [ main ]
   release:
@@ -12,12 +14,11 @@ on:
 env:
   PS3DEV: /usr/local/ps3dev
   PSL1GHT: /usr/local/ps3dev
-  # Official prebuilt nightly from ps3dev/ps3dev (needs GLIBC >= 2.38)
   PS3DEV_URL: https://github.com/ps3dev/ps3dev/releases/download/nightly-2026-07-26/ps3dev-linux-X64.tar.gz
+  APP_VERSION: "01.00"
 
 jobs:
   build:
-    # Ubuntu 24.04 ships GLIBC 2.39 – required by the prebuilt ppu-gcc
     runs-on: ubuntu-24.04
 
     steps:
@@ -62,7 +63,6 @@ jobs:
         fi
         sudo chown -R $USER:$USER ${{ env.PS3DEV }}
         rm -f /tmp/ps3dev.tar.gz
-        echo "Install done."
         ls -la ${{ env.PS3DEV }}/ppu/bin/ | head -20 || ls -la ${{ env.PS3DEV }}/ | head -30
 
     - name: Setup PATH
@@ -76,10 +76,16 @@ jobs:
 
     - name: Verify toolchain
       run: |
-        echo "PATH=$PATH"
-        which ppu-gcc || { echo "ppu-gcc still missing"; find /usr/local -name 'ppu-gcc' 2>/dev/null; exit 1; }
+        which ppu-gcc || { echo "ppu-gcc missing"; exit 1; }
         ppu-gcc --version | head -3
-        echo "Toolchain OK"
+
+    - name: Sync version.dat
+      run: |
+        # Keep version.dat in sync (root + data for PKG)
+        echo "${{ env.APP_VERSION }}" > version.dat
+        mkdir -p data
+        cp version.dat data/version.dat
+        cat version.dat
 
     - name: Generate icons
       run: |
@@ -91,8 +97,8 @@ jobs:
         set -e
         make clean || true
         make -j$(nproc)
-        make pkg || echo "PKG step may need sfo.py/pkg.py – ELF/SELF still produced"
-        ls -la *.elf *.self *.pkg 2>/dev/null || ls -la
+        make pkg || echo "PKG tools optional – ELF/SELF still built"
+        ls -la *.elf *.self *.pkg version.dat data/version.dat 2>/dev/null || ls -la
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
@@ -102,14 +108,52 @@ jobs:
           BadCBA.pkg
           BadCBA.elf
           BadCBA.self
+          version.dat
           data/ICON0.PNG
           data/PIC1.PNG
+          data/version.dat
         if-no-files-found: warn
 
-    - name: Upload Release Asset
+    # Create GitHub Release when a version tag is pushed (v1.0.0, v01.00, ...)
+    - name: Create Release from tag
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: softprops/action-gh-release@v2
+      with:
+        name: BadCBA ${{ github.ref_name }}
+        body: |
+          **BadCBA** – PS3 Custom Boot Maker (MP4)
+
+          Version: `${{ env.APP_VERSION }}`
+          Tag: `${{ github.ref_name }}`
+
+          ### Install
+          1. Copy `BadCBA.pkg` to USB
+          2. Package Manager → Install Package Files
+          3. Launch from XMB under Game
+
+          ### Files
+          - `BadCBA.pkg` – installable package
+          - `version.dat` – `${{ env.APP_VERSION }}`
+        files: |
+          BadCBA.pkg
+          BadCBA.elf
+          BadCBA.self
+          version.dat
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    # Also upload when a Release is published via GitHub UI
+    - name: Upload to existing Release
       if: github.event_name == 'release'
       uses: softprops/action-gh-release@v2
       with:
-        files: BadCBA.pkg
+        files: |
+          BadCBA.pkg
+          BadCBA.elf
+          BadCBA.self
+          version.dat
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -58,13 +58,19 @@ LDFLAGS     := $(LIBPATHS) $(LIBS)
 
 VPATH       := $(SOURCES)
 
-.PHONY: all clean pkg check-toolchain icons
+.PHONY: all clean pkg check-toolchain icons version
 
-all: check-toolchain $(TARGET).elf
+all: check-toolchain version $(TARGET).elf
 
 check-toolchain:
 	@echo "Using compiler: $(PPU_CC)"
 	@$(PPU_CC) --version | head -1
+
+version:
+	@echo "$(APP_VERSION)" > version.dat
+	@mkdir -p $(DATA)
+	@cp version.dat $(DATA)/version.dat
+	@echo "version.dat = $(APP_VERSION)"
 
 $(BUILD):
 	@mkdir -p $(BUILD)
@@ -89,11 +95,12 @@ else
 	@cp $< $@
 endif
 
-pkg: $(TARGET).self icons
+pkg: $(TARGET).self icons version
 	@echo "=== Creating PKG ==="
 	@rm -rf pkg
 	@mkdir -p pkg/USRDIR
 	@cp $(TARGET).self pkg/USRDIR/EBOOT.BIN
+	@cp version.dat pkg/USRDIR/version.dat
 	@cp $(DATA)/ICON0.PNG pkg/ 2>/dev/null || true
 	@cp $(DATA)/PIC1.PNG  pkg/ 2>/dev/null || true
 ifneq ($(SFO_PY),)
@@ -103,8 +110,8 @@ endif
 ifneq ($(PKG_PY),)
 	@$(PKG_PY) --contentid $(CONTENTID) pkg/ $(TARGET).pkg 2>/dev/null || true
 endif
-	@ls -la $(TARGET).pkg 2>/dev/null || echo "PKG tools missing – ELF/SELF ready"
-	@echo "Done."
+	@ls -la $(TARGET).pkg 2>/dev/null || echo "PKG tools missing – ELF/SELF + version.dat ready"
+	@echo "Done. version=$(APP_VERSION)"
 
 icons:
 	@mkdir -p $(DATA)
