@@ -10,6 +10,21 @@ on:
   release:
     types: [ published ]
   workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Create GitHub Release after build'
+        required: false
+        default: 'false'
+        type: boolean
+      version:
+        description: 'Version tag (e.g. v1.0.0) – only if create_release'
+        required: false
+        default: 'v1.0.0'
+
+# Required so GITHUB_TOKEN can create/update releases
+permissions:
+  contents: write
+  actions: read
 
 env:
   PS3DEV: /usr/local/ps3dev
@@ -24,6 +39,8 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     - name: Install host dependencies
       run: |
@@ -31,7 +48,6 @@ jobs:
         sudo apt-get install -y --no-install-recommends \
           build-essential wget ca-certificates python3 \
           libelf1 zlib1g libgmp10 libssl3
-        ldd --version | head -1
 
     - name: Cache PS3DEV toolchain
       id: cache
@@ -44,9 +60,7 @@ jobs:
       if: steps.cache.outputs.cache-hit != 'true'
       run: |
         set -e
-        echo "Downloading prebuilt toolchain..."
         wget -q --show-progress -O /tmp/ps3dev.tar.gz "${{ env.PS3DEV_URL }}"
-        echo "Extracting to ${{ env.PS3DEV }} ..."
         sudo mkdir -p ${{ env.PS3DEV }}
         sudo tar -xzf /tmp/ps3dev.tar.gz -C /usr/local
         if [ -d /usr/local/ps3dev/ps3dev ]; then
@@ -56,14 +70,12 @@ jobs:
           FOUND=$(find /usr/local -name 'ppu-gcc' -type f 2>/dev/null | head -1)
           if [ -n "$FOUND" ]; then
             ROOT=$(dirname $(dirname $(dirname "$FOUND")))
-            echo "Found toolchain at $ROOT"
             sudo rm -rf ${{ env.PS3DEV }}
             sudo mv "$ROOT" ${{ env.PS3DEV }}
           fi
         fi
         sudo chown -R $USER:$USER ${{ env.PS3DEV }}
         rm -f /tmp/ps3dev.tar.gz
-        ls -la ${{ env.PS3DEV }}/ppu/bin/ | head -20 || ls -la ${{ env.PS3DEV }}/ | head -30
 
     - name: Setup PATH
       run: |
@@ -81,24 +93,22 @@ jobs:
 
     - name: Sync version.dat
       run: |
-        # Keep version.dat in sync (root + data for PKG)
         echo "${{ env.APP_VERSION }}" > version.dat
         mkdir -p data
         cp version.dat data/version.dat
-        cat version.dat
+        echo "version.dat = $(cat version.dat)"
 
     - name: Generate icons
-      run: |
-        python3 tools/gen_icons.py
-        ls -la data/
+      run: python3 tools/gen_icons.py
 
     - name: Build BadCBA
       run: |
         set -e
         make clean || true
         make -j$(nproc)
-        make pkg || echo "PKG tools optional – ELF/SELF still built"
-        ls -la *.elf *.self *.pkg version.dat data/version.dat 2>/dev/null || ls -la
+        make pkg || echo "PKG optional"
+        echo "=== Build outputs ==="
+        ls -la BadCBA.elf BadCBA.self BadCBA.pkg version.dat 2>/dev/null || ls -la
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
@@ -111,28 +121,36 @@ jobs:
           version.dat
           data/ICON0.PNG
           data/PIC1.PNG
-          data/version.dat
         if-no-files-found: warn
 
-    # Create GitHub Release when a version tag is pushed (v1.0.0, v01.00, ...)
-    - name: Create Release from tag
-      if: startsWith(github.ref, 'refs/tags/v')
+    # ---- RELEASE ----
+    # Runs when: tag v* pushed, OR release published, OR manual workflow_dispatch with create_release
+    - name: Publish GitHub Release
+      id: release
+      if: |
+        startsWith(github.ref, 'refs/tags/v') ||
+        github.event_name == 'release' ||
+        (github.event_name == 'workflow_dispatch' && inputs.create_release == true)
       uses: softprops/action-gh-release@v2
       with:
-        name: BadCBA ${{ github.ref_name }}
+        tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || (github.event_name == 'workflow_dispatch' && inputs.version) || github.ref_name }}
+        name: BadCBA ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.version || env.APP_VERSION }}
         body: |
-          **BadCBA** – PS3 Custom Boot Maker (MP4)
+          ## BadCBA – PS3 Custom Boot Maker (MP4)
 
-          Version: `${{ env.APP_VERSION }}`
-          Tag: `${{ github.ref_name }}`
+          | | |
+          |---|---|
+          | Version | `${{ env.APP_VERSION }}` |
+          | Commit | `${{ github.sha }}` |
 
           ### Install
-          1. Copy `BadCBA.pkg` to USB
-          2. Package Manager → Install Package Files
-          3. Launch from XMB under Game
+          1. Copy **BadCBA.pkg** to a FAT32 USB
+          2. PS3 → Package Manager → Install Package Files
+          3. Launch **BadCBA** under Game in the XMB
 
-          ### Files
+          ### Included
           - `BadCBA.pkg` – installable package
+          - `BadCBA.elf` / `BadCBA.self` – raw binaries
           - `version.dat` – `${{ env.APP_VERSION }}`
         files: |
           BadCBA.pkg
@@ -142,18 +160,22 @@ jobs:
         draft: false
         prerelease: false
         generate_release_notes: true
+        fail_on_unmatched_files: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    # Also upload when a Release is published via GitHub UI
-    - name: Upload to existing Release
-      if: github.event_name == 'release'
-      uses: softprops/action-gh-release@v2
-      with:
-        files: |
-          BadCBA.pkg
-          BadCBA.elf
-          BadCBA.self
-          version.dat
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Release status
+      if: always()
+      run: |
+        echo "Event: ${{ github.event_name }}"
+        echo "Ref:   ${{ github.ref }}"
+        echo "Release step ran when tag v*, release event, or manual create_release."
+        if [ "${{ steps.release.outcome }}" = "success" ]; then
+          echo "Release published successfully."
+        elif [ "${{ steps.release.outcome }}" = "skipped" ]; then
+          echo "Release skipped (expected on normal main pushes)."
+          echo "To publish: git tag v1.0.0 && git push origin v1.0.0"
+          echo "Or: Actions → Run workflow → enable create_release"
+        else
+          echo "Release outcome: ${{ steps.release.outcome }}"
+        fi
