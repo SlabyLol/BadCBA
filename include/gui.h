@@ -10,6 +10,9 @@ typedef enum {
     MENU_FILEBROWSER,
     MENU_SETTINGS,
     MENU_CONVERT,
+    MENU_INSTALL,
+    MENU_NO_USB,
+    MENU_STATUS,
     MENU_ABOUT,
     MENU_COUNT
 } MenuState;

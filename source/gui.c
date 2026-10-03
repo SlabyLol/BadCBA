@@ -1,7 +1,7 @@
 /*
- * BadCBA - Full on-screen GUI with RSX framebuffer drawing
- * Clean dark theme, controller navigation, real menus
- * Primary media: MP4
+ * BadCBA - BadCustomBootAnimation GUI
+ * USB required – red error err:726 if missing
+ * Auto install to flash with backup
  */
 
 #include <stdio.h>
@@ -16,8 +16,8 @@
 #include "settings.h"
 #include "audio.h"
 #include "pkg.h"
+#include "flash.h"
 
-#define COL_BG          0xFF0A0A12
 #define COL_PANEL       0xFF14141F
 #define COL_ACCENT      0xFF6C5CE7
 #define COL_ACCENT2     0xFF00CEC9
@@ -25,7 +25,7 @@
 #define COL_TEXT_DIM    0xFF8888AA
 #define COL_SELECT      0xFF2D2D44
 #define COL_GREEN       0xFF00B894
-#define COL_RED         0xFFE17055
+#define COL_RED         0xFFFF3333
 #define COL_YELLOW      0xFFFDCB6E
 
 static MenuState current_menu = MENU_MAIN;
@@ -100,19 +100,15 @@ void gui_draw_rect(rsxBuffer *buf, int x, int y, int w, int h, u32 color)
 {
     if (!buf || !buf->ptr) return;
     u32 *ptr = (u32*)buf->ptr;
-    int bw = buf->width;
-    int bh = buf->height;
-
+    int bw = buf->width, bh = buf->height;
     if (x < 0) { w += x; x = 0; }
     if (y < 0) { h += y; y = 0; }
     if (x + w > bw) w = bw - x;
     if (y + h > bh) h = bh - y;
     if (w <= 0 || h <= 0) return;
-
     for (int j = 0; j < h; j++) {
         u32 *row = ptr + (y + j) * bw + x;
-        for (int i = 0; i < w; i++)
-            row[i] = color;
+        for (int i = 0; i < w; i++) row[i] = color;
     }
 }
 
@@ -125,30 +121,25 @@ void gui_draw_text_scaled(rsxBuffer *buf, int x, int y, const char *text, u32 co
 {
     if (!buf || !buf->ptr || !text) return;
     u32 *ptr = (u32*)buf->ptr;
-    int bw = buf->width;
-    int bh = buf->height;
-
+    int bw = buf->width, bh = buf->height;
     int cx = x;
     while (*text) {
         unsigned char c = (unsigned char)*text;
         if (c < 32 || c > 127) { text++; continue; }
         int idx = c - 32;
         if (idx >= 96) idx = 0;
-
         const unsigned char *glyph = font8x8_basic[idx];
-
         for (int gy = 0; gy < 8; gy++) {
             unsigned char row = glyph[gy];
             for (int gx = 0; gx < 8; gx++) {
                 if (row & (1 << gx)) {
-                    for (int sy = 0; sy < scale; sy++) {
+                    for (int sy = 0; sy < scale; sy++)
                         for (int sx = 0; sx < scale; sx++) {
                             int px = cx + gx * scale + sx;
                             int py = y + gy * scale + sy;
                             if (px >= 0 && px < bw && py >= 0 && py < bh)
                                 ptr[py * bw + px] = color;
                         }
-                    }
                 }
             }
         }
@@ -160,12 +151,14 @@ void gui_draw_text_scaled(rsxBuffer *buf, int x, int y, const char *text, u32 co
 static const char *main_items[] = {
     "Select MP4 from USB",
     "Settings",
-    "Convert & Create PKG",
+    "Convert MP4",
+    "Install to Flash (auto)",
+    "Restore original boot",
     "Export to USB",
     "About",
     "Exit"
 };
-static const int main_count = 6;
+static const int main_count = 8;
 
 void gui_init(int width, int height)
 {
@@ -185,21 +178,22 @@ void gui_set_menu(MenuState menu)
     debounce = 10;
 }
 
-MenuState gui_get_menu(void)
+MenuState gui_get_menu(void) { return current_menu; }
+
+static void require_usb_or_error(void)
 {
-    return current_menu;
+    if (!flash_usb_present()) {
+        gui_set_menu(MENU_NO_USB);
+    }
 }
 
 void gui_update(padData *pad)
 {
     if (debounce > 0) { debounce--; return; }
 
-    int up    = pad->BTN_UP;
-    int down  = pad->BTN_DOWN;
-    int left  = pad->BTN_LEFT;
-    int right = pad->BTN_RIGHT;
-    int cross = pad->BTN_CROSS;
-    int circle= pad->BTN_CIRCLE;
+    int up = pad->BTN_UP, down = pad->BTN_DOWN;
+    int left = pad->BTN_LEFT, right = pad->BTN_RIGHT;
+    int cross = pad->BTN_CROSS, circle = pad->BTN_CIRCLE;
 
     switch (current_menu) {
     case MENU_MAIN:
@@ -209,26 +203,40 @@ void gui_update(padData *pad)
             debounce = 12;
             switch (selected) {
             case 0:
-                filebrowser_open("/dev_usb000");
+                if (!flash_usb_present()) { gui_set_menu(MENU_NO_USB); break; }
+                filebrowser_open(flash_find_usb());
                 gui_set_menu(MENU_FILEBROWSER);
                 break;
             case 1: gui_set_menu(MENU_SETTINGS); break;
             case 2: gui_set_menu(MENU_CONVERT); break;
-            case 3: audio_export_to_usb(); break;
-            case 4: gui_set_menu(MENU_ABOUT); break;
-            case 5: break;
+            case 3: /* Install to flash */
+                if (!flash_usb_present()) { gui_set_menu(MENU_NO_USB); break; }
+                audio_convert();
+                flash_install_to_vsh();
+                gui_set_menu(MENU_STATUS);
+                break;
+            case 4:
+                flash_restore_backup();
+                gui_set_menu(MENU_STATUS);
+                break;
+            case 5:
+                if (!flash_usb_present()) { gui_set_menu(MENU_NO_USB); break; }
+                audio_export_to_usb();
+                gui_set_menu(MENU_STATUS);
+                break;
+            case 6: gui_set_menu(MENU_ABOUT); break;
+            case 7: break;
             }
         }
         break;
 
     case MENU_FILEBROWSER:
         if (circle) { gui_set_menu(MENU_MAIN); break; }
-        if (up)   { filebrowser_up();   debounce = 6; }
+        if (up)   { filebrowser_up(); debounce = 6; }
         if (down) { filebrowser_down(); debounce = 6; }
         if (cross) {
             debounce = 10;
-            if (filebrowser_is_dir())
-                filebrowser_enter();
+            if (filebrowser_is_dir()) filebrowser_enter();
             else if (filebrowser_is_media()) {
                 audio_set_source(filebrowser_get_path());
                 gui_set_menu(MENU_MAIN);
@@ -238,24 +246,31 @@ void gui_update(padData *pad)
 
     case MENU_SETTINGS:
         if (circle) { gui_set_menu(MENU_MAIN); break; }
-        if (up)    { settings_prev(); debounce = 6; }
-        if (down)  { settings_next(); debounce = 6; }
-        if (left)  { settings_adjust(-1); debounce = 6; }
-        if (right) { settings_adjust(+1); debounce = 6; }
+        if (up) settings_prev();
+        if (down) settings_next();
+        if (left) settings_adjust(-1);
+        if (right) settings_adjust(+1);
+        if (up || down || left || right) debounce = 6;
         break;
 
     case MENU_CONVERT:
         if (circle) { gui_set_menu(MENU_MAIN); break; }
         if (cross) {
             debounce = 20;
+            if (!flash_usb_present()) { gui_set_menu(MENU_NO_USB); break; }
             audio_convert();
             pkg_create_coldboot();
-            gui_set_menu(MENU_MAIN);
+            gui_set_menu(MENU_STATUS);
         }
         break;
 
+    case MENU_NO_USB:
+    case MENU_STATUS:
     case MENU_ABOUT:
-        if (circle) gui_set_menu(MENU_MAIN);
+        if (circle || cross) {
+            debounce = 10;
+            gui_set_menu(MENU_MAIN);
+        }
         break;
 
     default: break;
@@ -268,77 +283,98 @@ void gui_render(gcmContextData *context, rsxBuffer *buffer)
 
     gui_draw_rect(buffer, 0, 0, screen_w, 70, COL_PANEL);
     gui_draw_rect(buffer, 0, 70, screen_w, 3, COL_ACCENT);
-
     gui_draw_text_scaled(buffer, 40, 22, "BadCBA", COL_ACCENT2, 3);
-    gui_draw_text(buffer, 200, 30, "Custom Boot Maker (MP4)", COL_TEXT_DIM);
+    gui_draw_text(buffer, 200, 30, "BadCustomBootAnimation", COL_TEXT_DIM);
 
-    int panel_x = 80;
-    int panel_y = 110;
-    int panel_w = screen_w - 160;
-    int panel_h = screen_h - 180;
-
+    int panel_x = 60, panel_y = 100;
+    int panel_w = screen_w - 120, panel_h = screen_h - 160;
     gui_draw_rect(buffer, panel_x, panel_y, panel_w, panel_h, COL_PANEL);
 
-    int y = panel_y + 30;
+    int y = panel_y + 28;
 
     switch (current_menu) {
     case MENU_MAIN:
         gui_draw_text(buffer, panel_x + 30, y, "MAIN MENU", COL_ACCENT);
-        y += 50;
+        y += 44;
         for (int i = 0; i < main_count; i++) {
             if (i == selected) {
-                gui_draw_rect(buffer, panel_x + 20, y - 8, panel_w - 40, 36, COL_SELECT);
-                gui_draw_rect(buffer, panel_x + 20, y - 8, 6, 36, COL_ACCENT);
-                gui_draw_text(buffer, panel_x + 50, y, main_items[i], COL_TEXT);
+                gui_draw_rect(buffer, panel_x + 16, y - 6, panel_w - 32, 34, COL_SELECT);
+                gui_draw_rect(buffer, panel_x + 16, y - 6, 5, 34, COL_ACCENT);
+                gui_draw_text(buffer, panel_x + 40, y, main_items[i], COL_TEXT);
             } else {
-                gui_draw_text(buffer, panel_x + 50, y, main_items[i], COL_TEXT_DIM);
+                gui_draw_text(buffer, panel_x + 40, y, main_items[i], COL_TEXT_DIM);
             }
-            y += 48;
+            y += 40;
         }
         break;
 
     case MENU_FILEBROWSER:
-        gui_draw_text(buffer, panel_x + 30, y, "USB FILE BROWSER (MP4)", COL_ACCENT);
-        y += 40;
+        gui_draw_text(buffer, panel_x + 30, y, "USB FILE BROWSER", COL_ACCENT);
+        y += 36;
         gui_draw_text(buffer, panel_x + 30, y, filebrowser_get_current_dir(), COL_TEXT_DIM);
-        y += 40;
+        y += 36;
         filebrowser_render_gui(buffer, panel_x + 30, y, panel_w - 60);
         gui_draw_text(buffer, panel_x + 30, screen_h - 90, "[X] Select   [O] Back", COL_TEXT_DIM);
         break;
 
     case MENU_SETTINGS:
         gui_draw_text(buffer, panel_x + 30, y, "SETTINGS", COL_ACCENT);
-        y += 50;
+        y += 44;
         settings_render_gui(buffer, panel_x + 30, y, panel_w - 60);
-        gui_draw_text(buffer, panel_x + 30, screen_h - 90, "[Left/Right] Change   [Up/Down] Navigate   [O] Back", COL_TEXT_DIM);
+        gui_draw_text(buffer, panel_x + 30, screen_h - 90, "[O] Back", COL_TEXT_DIM);
         break;
 
-    case MENU_CONVERT:
-        gui_draw_text(buffer, panel_x + 30, y, "CONVERT & CREATE PKG", COL_ACCENT);
-        y += 50;
-        char line[128];
-        snprintf(line, sizeof(line), "Source  : %s", audio_get_source());
-        gui_draw_text(buffer, panel_x + 40, y, line, COL_TEXT); y += 40;
-        snprintf(line, sizeof(line), "Duration: %d seconds", settings_get_duration());
-        gui_draw_text(buffer, panel_x + 40, y, line, COL_TEXT); y += 40;
-        snprintf(line, sizeof(line), "Volume  : %d %%", settings_get_volume());
-        gui_draw_text(buffer, panel_x + 40, y, line, COL_TEXT); y += 40;
-        snprintf(line, sizeof(line), "Fade    : %d ms", settings_get_fade());
-        gui_draw_text(buffer, panel_x + 40, y, line, COL_TEXT); y += 60;
-        gui_draw_text(buffer, panel_x + 40, y, "Press [X] to start conversion", COL_GREEN);
-        gui_draw_text(buffer, panel_x + 30, screen_h - 90, "[X] Start   [O] Cancel", COL_TEXT_DIM);
+    case MENU_CONVERT: {
+        gui_draw_text(buffer, panel_x + 30, y, "CONVERT MP4", COL_ACCENT);
+        y += 44;
+        char line[160];
+        snprintf(line, sizeof(line), "Source: %s", audio_get_source());
+        gui_draw_text(buffer, panel_x + 40, y, line, COL_TEXT); y += 36;
+        snprintf(line, sizeof(line), "Duration: %ds  Volume: %d%%  Fade: %dms",
+                 settings_get_duration(), settings_get_volume(), settings_get_fade());
+        gui_draw_text(buffer, panel_x + 40, y, line, COL_TEXT_DIM); y += 50;
+        gui_draw_text(buffer, panel_x + 40, y, "[X] Convert   [O] Cancel", COL_GREEN);
         break;
+    }
+
+    case MENU_NO_USB:
+        /* Exact user-requested error – bright red */
+        y = panel_y + panel_h / 2 - 40;
+        gui_draw_text_scaled(buffer, panel_x + 40, y,
+            "Uppss!! We found no USB!", COL_RED, 2);
+        y += 40;
+        gui_draw_text_scaled(buffer, panel_x + 40, y,
+            "Please insert an USB to continue!", COL_RED, 2);
+        y += 40;
+        gui_draw_text_scaled(buffer, panel_x + 40, y,
+            "(err:726)", COL_RED, 2);
+        y += 50;
+        gui_draw_text(buffer, panel_x + 40, y, "[X] / [O] Back to menu", COL_TEXT_DIM);
+        break;
+
+    case MENU_STATUS: {
+        gui_draw_text(buffer, panel_x + 30, y, "STATUS", COL_ACCENT);
+        y += 50;
+        const char *st = flash_get_status();
+        u32 col = COL_TEXT;
+        if (strstr(st, "err:726") || strstr(st, "failed") || strstr(st, "FAILED"))
+            col = COL_RED;
+        else if (strstr(st, "OK") || strstr(st, "Installed") || strstr(st, "Restored"))
+            col = COL_GREEN;
+        gui_draw_text(buffer, panel_x + 40, y, st[0] ? st : "Done.", col);
+        y += 50;
+        gui_draw_text(buffer, panel_x + 40, y, "[X] / [O] Back", COL_TEXT_DIM);
+        break;
+    }
 
     case MENU_ABOUT:
-        gui_draw_text(buffer, panel_x + 30, y, "ABOUT BadCBA", COL_ACCENT);
-        y += 50;
-        gui_draw_text(buffer, panel_x + 40, y, "Bad Custom Boot Audio", COL_TEXT); y += 36;
-        gui_draw_text(buffer, panel_x + 40, y, "Create custom PS3 coldboot from MP4", COL_TEXT_DIM); y += 36;
-        gui_draw_text(buffer, panel_x + 40, y, "directly on your console.", COL_TEXT_DIM); y += 50;
-        gui_draw_text(buffer, panel_x + 40, y, "Title ID : BCBA00001", COL_TEXT); y += 36;
-        gui_draw_text(buffer, panel_x + 40, y, "Version  : 1.0", COL_TEXT); y += 36;
-        gui_draw_text(buffer, panel_x + 40, y, "License  : MIT", COL_TEXT); y += 50;
-        gui_draw_text(buffer, panel_x + 40, y, "Use at your own risk.", COL_YELLOW);
+        gui_draw_text(buffer, panel_x + 30, y, "ABOUT", COL_ACCENT); y += 44;
+        gui_draw_text(buffer, panel_x + 40, y, "BadCustomBootAnimation", COL_TEXT); y += 32;
+        gui_draw_text(buffer, panel_x + 40, y, "Replace PS3 coldboot with your MP4", COL_TEXT_DIM); y += 32;
+        gui_draw_text(buffer, panel_x + 40, y, "Installs to /dev_blind/vsh/resource/", COL_TEXT_DIM); y += 32;
+        gui_draw_text(buffer, panel_x + 40, y, "Backup saved before overwrite", COL_TEXT_DIM); y += 40;
+        gui_draw_text(buffer, panel_x + 40, y, "Title ID BCBA00001  |  MIT", COL_TEXT); y += 40;
+        gui_draw_text(buffer, panel_x + 40, y, "Flash write can brick – use CFW carefully", COL_YELLOW);
         gui_draw_text(buffer, panel_x + 30, screen_h - 90, "[O] Back", COL_TEXT_DIM);
         break;
 
@@ -346,5 +382,6 @@ void gui_render(gcmContextData *context, rsxBuffer *buffer)
     }
 
     gui_draw_rect(buffer, 0, screen_h - 40, screen_w, 40, COL_PANEL);
-    gui_draw_text(buffer, 40, screen_h - 28, "BadCBA v1.0  |  MP4 Custom Boot  |  CFW / HEN", COL_TEXT_DIM);
+    gui_draw_text(buffer, 40, screen_h - 28,
+                  "BadCBA v1.0 | BadCustomBootAnimation | CFW/HEN", COL_TEXT_DIM);
 }
