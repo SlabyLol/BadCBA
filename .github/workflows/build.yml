@@ -12,12 +12,13 @@ on:
 env:
   PS3DEV: /usr/local/ps3dev
   PSL1GHT: /usr/local/ps3dev
-  # Official prebuilt nightly from ps3dev/ps3dev
+  # Official prebuilt nightly from ps3dev/ps3dev (needs GLIBC >= 2.38)
   PS3DEV_URL: https://github.com/ps3dev/ps3dev/releases/download/nightly-2026-07-26/ps3dev-linux-X64.tar.gz
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    # Ubuntu 24.04 ships GLIBC 2.39 – required by the prebuilt ppu-gcc
+    runs-on: ubuntu-24.04
 
     steps:
     - name: Checkout
@@ -29,13 +30,14 @@ jobs:
         sudo apt-get install -y --no-install-recommends \
           build-essential wget ca-certificates python3 \
           libelf1 zlib1g libgmp10 libssl3
+        ldd --version | head -1
 
     - name: Cache PS3DEV toolchain
       id: cache
       uses: actions/cache@v4
       with:
         path: /usr/local/ps3dev
-        key: ps3dev-linux-X64-nightly-2026-07-26
+        key: ps3dev-linux-X64-nightly-2026-07-26-ubuntu24
 
     - name: Download & install prebuilt PS3DEV
       if: steps.cache.outputs.cache-hit != 'true'
@@ -46,13 +48,10 @@ jobs:
         echo "Extracting to ${{ env.PS3DEV }} ..."
         sudo mkdir -p ${{ env.PS3DEV }}
         sudo tar -xzf /tmp/ps3dev.tar.gz -C /usr/local
-        # Archive may extract as ps3dev/ or directly into structure
         if [ -d /usr/local/ps3dev/ps3dev ]; then
           sudo mv /usr/local/ps3dev/ps3dev/* /usr/local/ps3dev/ || true
         fi
-        # Some archives extract as a top-level folder name
         if [ ! -x ${{ env.PS3DEV }}/ppu/bin/ppu-gcc ]; then
-          # try find ppu-gcc
           FOUND=$(find /usr/local -name 'ppu-gcc' -type f 2>/dev/null | head -1)
           if [ -n "$FOUND" ]; then
             ROOT=$(dirname $(dirname $(dirname "$FOUND")))
