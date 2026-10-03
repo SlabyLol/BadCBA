@@ -3,23 +3,9 @@
 
 #include "rsxutil.h"
 
-/*
- * BadCBA complete error catalog
- * Ranges:
- *   700-749  USB
- *   750-799  File system / paths
- *   800-849  Media / MP4
- *   850-899  Conversion / encode
- *   900-949  Flash / coldboot install
- *   950-979  HDD / storage
- *   980-989  Memory / system
- *   990-998  Settings / PKG / GUI
- *   999      Unknown
- */
 typedef enum {
     ERR_OK = 0,
 
-    /* USB 700-749 */
     ERR_USB_NOT_FOUND       = 726,
     ERR_USB_NOT_MOUNTED     = 700,
     ERR_USB_READ            = 727,
@@ -34,7 +20,6 @@ typedef enum {
     ERR_USB_NO_MEDIA_FILES  = 708,
     ERR_USB_ENUM            = 709,
 
-    /* File system 750-799 */
     ERR_FS_OPEN             = 750,
     ERR_FS_CLOSE            = 751,
     ERR_FS_READ             = 752,
@@ -53,7 +38,6 @@ typedef enum {
     ERR_FS_PATH_TOO_LONG    = 765,
     ERR_FS_NAME_INVALID     = 766,
 
-    /* Media / MP4 800-849 */
     ERR_NO_MP4_SELECTED     = 801,
     ERR_MP4_OPEN            = 802,
     ERR_MP4_INVALID         = 803,
@@ -71,27 +55,25 @@ typedef enum {
     ERR_MP3_INVALID         = 820,
     ERR_MEDIA_UNKNOWN       = 829,
 
-    /* Conversion 850-899 */
     ERR_CONVERT_FAIL        = 810,
     ERR_CONVERT_AUDIO       = 811,
     ERR_CONVERT_VIDEO       = 850,
     ERR_CONVERT_TIMEOUT     = 851,
     ERR_CONVERT_CANCELLED   = 852,
     ERR_CONVERT_PARTIAL     = 853,
-    ERR_AC3_ENCODE          = 820,
-    ERR_AC3_STEREO          = 860,
-    ERR_AC3_MULTI           = 861,
-    ERR_AC3_SAMPLE_RATE     = 862,
-    ERR_AC3_CHANNELS        = 863,
-    ERR_RAF_ENCODE          = 821,
-    ERR_RAF_FRAMES          = 870,
-    ERR_RAF_SIZE            = 871,
-    ERR_RAF_HEADER          = 872,
+    ERR_AC3_ENCODE          = 860,
+    ERR_AC3_STEREO          = 861,
+    ERR_AC3_MULTI           = 862,
+    ERR_AC3_SAMPLE_RATE     = 863,
+    ERR_AC3_CHANNELS        = 864,
+    ERR_RAF_ENCODE          = 870,
+    ERR_RAF_FRAMES          = 871,
+    ERR_RAF_SIZE            = 872,
+    ERR_RAF_HEADER          = 873,
     ERR_FADE_INVALID        = 880,
     ERR_VOLUME_INVALID      = 881,
     ERR_DURATION_INVALID    = 882,
 
-    /* Flash / coldboot 900-949 */
     ERR_FLASH_NO_BLIND      = 900,
     ERR_FLASH_BACKUP        = 901,
     ERR_FLASH_INSTALL       = 902,
@@ -110,7 +92,6 @@ typedef enum {
     ERR_BACKUP_CORRUPT      = 931,
     ERR_BACKUP_WRITE        = 932,
 
-    /* HDD 950-979 */
     ERR_HDD_FULL            = 950,
     ERR_HDD_WRITE           = 951,
     ERR_HDD_READ            = 952,
@@ -119,7 +100,6 @@ typedef enum {
     ERR_TMP_CREATE          = 960,
     ERR_TMP_CLEAN           = 961,
 
-    /* Memory / system 980-989 */
     ERR_MEM_ALLOC           = 980,
     ERR_MEM_ALIGN           = 981,
     ERR_RSX_INIT            = 982,
@@ -128,7 +108,6 @@ typedef enum {
     ERR_SYSMODULE           = 985,
     ERR_THREAD              = 986,
 
-    /* Settings / PKG / GUI 990-998 */
     ERR_SETTINGS_LOAD       = 990,
     ERR_SETTINGS_SAVE       = 991,
     ERR_SETTINGS_RANGE      = 992,
@@ -143,13 +122,17 @@ typedef enum {
 } BadCbaError;
 
 void error_init(void);
-void error_shutdown(void);
-void error_raise(BadCbaError code);
-void error_clear(void);
-int          error_is_active(void);
+void error_shutdown(void);   /* only place that stops the WAV */
+
+void error_raise(BadCbaError code);  /* show overlay + start/keep WAV loop */
+void error_clear(void);              /* hide overlay only – WAV keeps playing */
+
+int          error_is_active(void);  /* overlay visible? */
+int          error_sound_playing(void);
 BadCbaError  error_get_code(void);
 const char  *error_get_message(void);
-void error_update(void);
+
+void error_update(void);  /* keep WAV looping while sound is on */
 void error_render(rsxBuffer *buf, int screen_w, int screen_h);
 
 #endif

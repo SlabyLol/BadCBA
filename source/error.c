@@ -1,5 +1,7 @@
 /*
- * BadCBA – full error catalog + error-cba.wav loop
+ * BadCBA errors
+ * error-cba.wav starts on first error and loops until APP EXIT only.
+ * Dismiss (X/O) hides the overlay but does NOT stop the sound.
  */
 
 #include <stdio.h>
@@ -14,10 +16,10 @@
 
 static BadCbaError current_code = ERR_OK;
 static char current_msg[320] = "";
-static int active = 0;
+static int overlay_active = 0;   /* red error panel visible */
+static int sound_playing = 0;    /* WAV loop until exit */
 
 static int sound_ready = 0;
-static int sound_playing = 0;
 static u8 *wav_data = NULL;
 static u32 wav_size = 0;
 static u32 wav_pos = 0;
@@ -35,8 +37,6 @@ static const char *msg_for(BadCbaError code)
 {
     switch (code) {
     case ERR_OK:                 return "OK";
-
-    /* USB */
     case ERR_USB_NOT_FOUND:      return "Uppss!! We found no USB! Please insert an USB to continue!";
     case ERR_USB_NOT_MOUNTED:    return "USB device is not mounted.";
     case ERR_USB_READ:           return "USB read failed. Check the drive and try again.";
@@ -50,8 +50,6 @@ static const char *msg_for(BadCbaError code)
     case ERR_USB_PATH_INVALID:   return "Invalid path on USB.";
     case ERR_USB_NO_MEDIA_FILES: return "No MP4/MP3 files found on USB.";
     case ERR_USB_ENUM:           return "Could not list USB devices.";
-
-    /* FS */
     case ERR_FS_OPEN:            return "Failed to open file.";
     case ERR_FS_CLOSE:           return "Failed to close file.";
     case ERR_FS_READ:            return "File read error.";
@@ -69,8 +67,6 @@ static const char *msg_for(BadCbaError code)
     case ERR_FS_IS_DIR:          return "Path is a directory, expected a file.";
     case ERR_FS_PATH_TOO_LONG:   return "Path is too long.";
     case ERR_FS_NAME_INVALID:    return "Invalid file name.";
-
-    /* MP4 / media */
     case ERR_NO_MP4_SELECTED:    return "No MP4 selected. Choose a file from USB first.";
     case ERR_MP4_OPEN:           return "Could not open the MP4 file.";
     case ERR_MP4_INVALID:        return "Invalid or corrupted MP4 file.";
@@ -87,8 +83,6 @@ static const char *msg_for(BadCbaError code)
     case ERR_MP4_STREAM_END:     return "Unexpected end of MP4 stream.";
     case ERR_MP3_INVALID:        return "Invalid MP3 file.";
     case ERR_MEDIA_UNKNOWN:      return "Unknown media type.";
-
-    /* Convert */
     case ERR_CONVERT_FAIL:       return "Conversion failed.";
     case ERR_CONVERT_AUDIO:      return "Audio conversion failed.";
     case ERR_CONVERT_VIDEO:      return "Video conversion failed.";
@@ -107,8 +101,6 @@ static const char *msg_for(BadCbaError code)
     case ERR_FADE_INVALID:       return "Invalid fade value.";
     case ERR_VOLUME_INVALID:     return "Invalid volume value.";
     case ERR_DURATION_INVALID:   return "Invalid duration value.";
-
-    /* Flash */
     case ERR_FLASH_NO_BLIND:     return "No /dev_blind access. Enable flash write on CFW.";
     case ERR_FLASH_BACKUP:       return "Backup of original coldboot failed.";
     case ERR_FLASH_INSTALL:      return "Install to flash failed.";
@@ -126,8 +118,6 @@ static const char *msg_for(BadCbaError code)
     case ERR_BACKUP_MISSING:     return "No backup found to restore.";
     case ERR_BACKUP_CORRUPT:     return "Backup files are corrupt.";
     case ERR_BACKUP_WRITE:       return "Could not write backup.";
-
-    /* HDD */
     case ERR_HDD_FULL:           return "Internal HDD is full.";
     case ERR_HDD_WRITE:          return "Could not write to internal HDD.";
     case ERR_HDD_READ:           return "Could not read from internal HDD.";
@@ -135,8 +125,6 @@ static const char *msg_for(BadCbaError code)
     case ERR_HDD_PATH:           return "Invalid HDD path.";
     case ERR_TMP_CREATE:         return "Could not create temp folder.";
     case ERR_TMP_CLEAN:          return "Could not clean temp files.";
-
-    /* System */
     case ERR_MEM_ALLOC:          return "Out of memory.";
     case ERR_MEM_ALIGN:          return "Memory alignment error.";
     case ERR_RSX_INIT:           return "RSX / video init failed.";
@@ -144,8 +132,6 @@ static const char *msg_for(BadCbaError code)
     case ERR_PAD_INIT:           return "Controller init failed.";
     case ERR_SYSMODULE:          return "System module load failed.";
     case ERR_THREAD:             return "Thread error.";
-
-    /* App */
     case ERR_SETTINGS_LOAD:      return "Could not load settings.";
     case ERR_SETTINGS_SAVE:      return "Could not save settings.";
     case ERR_SETTINGS_RANGE:     return "Setting value out of range.";
@@ -155,7 +141,6 @@ static const char *msg_for(BadCbaError code)
     case ERR_ICON_MISSING:       return "ICON0.PNG missing.";
     case ERR_GUI_STATE:          return "Invalid GUI state.";
     case ERR_WAV_MISSING:        return "error-cba.wav missing (sound disabled).";
-
     case ERR_UNKNOWN:
     default:                     return "Unknown error.";
     }
@@ -206,72 +191,72 @@ static int load_wav(void)
     return -1;
 }
 
-static void sound_start_loop(void)
-{
-    load_wav();
-    sound_playing = 1;
-    wav_pos = wav_data_offset;
-}
-
-static void sound_stop(void)
-{
-    sound_playing = 0;
-    wav_pos = wav_data_offset;
-}
-
 void error_init(void)
 {
     current_code = ERR_OK;
-    active = 0;
-    if (load_wav() != 0)
-        printf("Note: error-cba.wav not loaded yet (will retry on error)\n");
+    overlay_active = 0;
+    sound_playing = 0;
+    load_wav();
 }
 
+/* ONLY called on app exit – stops WAV here */
 void error_shutdown(void)
 {
-    sound_stop();
+    sound_playing = 0;
+    overlay_active = 0;
     if (wav_data) { free(wav_data); wav_data = NULL; }
     sound_ready = 0;
+    wav_pos = 0;
 }
 
 void error_raise(BadCbaError code)
 {
-    if (code == ERR_OK) {
-        error_clear();
+    if (code == ERR_OK)
         return;
-    }
+
     current_code = code;
     snprintf(current_msg, sizeof(current_msg), "%s (err:%d)",
              msg_for(code), (int)code);
-    active = 1;
-    sound_start_loop();
+    overlay_active = 1;
+
+    /* Start loop once; never stop until error_shutdown (app exit) */
+    if (!sound_playing) {
+        load_wav();
+        sound_playing = 1;
+        wav_pos = wav_data_offset;
+    }
+
     printf("ERROR: %s\n", current_msg);
 }
 
+/* Hide overlay only – sound keeps looping */
 void error_clear(void)
 {
-    active = 0;
-    current_code = ERR_OK;
-    current_msg[0] = '\0';
-    sound_stop();
+    overlay_active = 0;
+    /* do NOT clear current_code / sound_playing */
 }
 
-int error_is_active(void) { return active; }
+int error_is_active(void) { return overlay_active; }
+int error_sound_playing(void) { return sound_playing; }
 BadCbaError error_get_code(void) { return current_code; }
 const char *error_get_message(void) { return current_msg; }
 
 void error_update(void)
 {
-    if (!active || !sound_playing || !sound_ready || !wav_data)
+    /* Keep looping for entire app lifetime after first error */
+    if (!sound_playing)
         return;
+    if (!sound_ready || !wav_data)
+        return;
+
     wav_pos += 4096;
     if (wav_pos >= wav_size)
-        wav_pos = wav_data_offset;
+        wav_pos = wav_data_offset;  /* restart WAV from beginning */
 }
 
 void error_render(rsxBuffer *buf, int screen_w, int screen_h)
 {
-    if (!active || !buf) return;
+    if (!overlay_active || !buf) return;
 
     gui_draw_rect(buf, 40, screen_h / 2 - 100, screen_w - 80, 200, 0xFF2A0000);
     gui_draw_rect(buf, 40, screen_h / 2 - 100, screen_w - 80, 4, 0xFFFF3333);
@@ -281,7 +266,7 @@ void error_render(rsxBuffer *buf, int screen_w, int screen_h)
     y += 48;
     gui_draw_text(buf, 60, y, current_msg, 0xFFFF5555);
     y += 40;
-    gui_draw_text(buf, 60, y, "Playing error-cba.wav (loop)...", 0xFFAAAAAA);
+    gui_draw_text(buf, 60, y, "error-cba.wav looping until exit...", 0xFFAAAAAA);
     y += 36;
-    gui_draw_text(buf, 60, y, "[X] / [O] Dismiss", 0xFF888888);
+    gui_draw_text(buf, 60, y, "[X] / [O] Hide message (sound continues)", 0xFF888888);
 }
