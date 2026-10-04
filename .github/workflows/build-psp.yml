@@ -25,13 +25,6 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Ensure python3 for icon
-      run: |
-        if ! command -v python3 >/dev/null 2>&1; then
-          apt-get update && apt-get install -y --no-install-recommends python3
-        fi
-        python3 --version
-
     - name: Build EBOOT.PBP
       working-directory: psp
       run: |
@@ -39,11 +32,10 @@ jobs:
         echo "PSPDEV=$PSPDEV"
         which psp-gcc
         psp-gcc --version | head -2
-        python3 gen_icon0.py
-        ls -la ICON0.PNG
+        # ICON0.PNG optional – Makefile uses NULL if missing
         make clean || true
         make
-        ls -la EBOOT.PBP PARAM.SFO ICON0.PNG BadCBA.prx 2>/dev/null || ls -la
+        ls -la EBOOT.PBP PARAM.SFO BadCBA.prx BadCBA.elf 2>/dev/null || ls -la
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
@@ -52,7 +44,6 @@ jobs:
         path: |
           psp/EBOOT.PBP
           psp/PARAM.SFO
-          psp/ICON0.PNG
           psp/BadCBA.prx
           psp/BadCBA.elf
         if-no-files-found: warn
@@ -65,7 +56,6 @@ jobs:
         name: ${{ startsWith(github.ref, 'refs/tags/v') && format('BadCBA {0}', github.ref_name) || 'BadCBA latest' }}
         files: |
           psp/EBOOT.PBP
-          psp/ICON0.PNG
         fail_on_unmatched_files: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
