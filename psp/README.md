@@ -1,41 +1,30 @@
-# BadCBA for PSP
+# BadCBA for PSP (full)
 
-**BadCustomBootAnimation** – PSP homebrew port.
+**BadCustomBootAnimation** – complete PSP homebrew port.
 
 ## Features
 
-- On-screen menu (debug font + GU)
-- Memory Stick browser (`ms0:`)
-- Select MP4 / MP3 / PMF media
-- Settings: duration, volume
-- Prepare boot folder: `ms0:/BadCBA_Boot/`
-- No MS → red error style **(err:726)**
-
-## Requirements
-
-- PSP with **CFW** (or PRO / ME / Infinity)
-- Memory Stick
+| Feature | Description |
+|---------|-------------|
+| Media browser | `ms0:` – MP4, MP3, PMF, AVI, AT3, WAV… |
+| Settings | Duration, volume, fade, backup ON/OFF (saved) |
+| Convert | Copy media + write `boot_info.txt` to `ms0:/BadCBA_Boot/` |
+| Install | Copy prepared files to `ms0:/BadCBA_Boot/installed/` |
+| Restore | Restore from `ms0:/PSP/GAME/BadCBA/backup/` |
+| Export | `ms0:/BadCBA_Export/` |
+| Errors | Full codes; **(err:726)** no MS; `error-cba.wav` loops **until app exit** |
 
 ## Install
 
-1. Download `EBOOT.PBP` from [Releases](https://github.com/SlabyLol/BadCBA/releases)
-2. Copy to `ms0:/PSP/GAME/BadCBA/EBOOT.PBP`
-3. Run from the XMB under Game → Memory Stick
-
-## Build (local)
-
-```bash
-# Using Docker
-docker run --rm -v "$PWD:/source" -w /source/psp pspdev/pspdev:latest make
-
-# Or native PSPDEV
-export PSPDEV=/usr/local/pspdev
-export PATH=$PATH:$PSPDEV/bin
-cd psp && make
+```
+ms0:/PSP/GAME/BadCBA/EBOOT.PBP
+ms0:/PSP/GAME/BadCBA/error-cba.wav   (optional)
 ```
 
-Output: `EBOOT.PBP`
+## Build
 
-## GitHub Actions
+```bash
+docker run --rm -v "$PWD:/source" -w /source/psp pspdev/pspdev:latest make
+```
 
-Workflow `.github/workflows/build-psp.yml` builds with `pspdev/pspdev:latest` and uploads `EBOOT.PBP`.
+Optional icon: `python3 gen_icon0.py` then `make`.

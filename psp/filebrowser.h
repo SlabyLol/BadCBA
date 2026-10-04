@@ -11,7 +11,7 @@ int  filebrowser_is_dir(void);
 int  filebrowser_is_media(void);
 void filebrowser_select_current(void);
 const char *filebrowser_cwd(void);
+const char *filebrowser_selected(void);
 void filebrowser_draw_list(void);
-void filebrowser_prepare_boot(int duration_s, int volume);
 
 #endif

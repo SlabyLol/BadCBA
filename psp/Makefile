@@ -1,23 +1,19 @@
-# BadCBA PSP – BadCustomBootAnimation
+# BadCBA PSP – full feature build
 TARGET = BadCBA
-OBJS = main.o gui.o filebrowser.o
+OBJS = main.o gui.o filebrowser.o settings.o flash.o error.o audio.o
 
 PSP_EBOOT_TITLE = BadCBA
 PSP_FW_VERSION = 371
 BUILD_PRX = 1
 
-INCDIR =
 CFLAGS = -O2 -G0 -Wall
 CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti
 ASFLAGS = $(CFLAGS)
 
-LIBDIR =
 LIBS = -lpspgu -lpspgum -lpspge -lpspaudio -lpspaudiolib -lpspctrl -lpsppower -lpsprtc -lpspvfpu -lm
-LDFLAGS =
 
 EXTRA_TARGETS = EBOOT.PBP
 
-# Use ICON0.PNG if present, otherwise NULL (pack-pbp accepts NULL)
 ifeq ($(wildcard ICON0.PNG),)
   PSP_EBOOT_ICON = NULL
 else

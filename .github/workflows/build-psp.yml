@@ -3,13 +3,10 @@ name: Build BadCBA PSP
 on:
   push:
     branches: [ main ]
-    paths:
-      - 'psp/**'
-      - '.github/workflows/build-psp.yml'
+    paths: [ 'psp/**', '.github/workflows/build-psp.yml' ]
     tags: [ 'v*' ]
   pull_request:
-    paths:
-      - 'psp/**'
+    paths: [ 'psp/**' ]
   workflow_dispatch:
 
 permissions:
@@ -20,42 +17,30 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: pspdev/pspdev:latest
-
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-
+    - uses: actions/checkout@v4
     - name: Build EBOOT.PBP
       working-directory: psp
       run: |
         set -e
-        echo "PSPDEV=$PSPDEV"
-        which psp-gcc
-        psp-gcc --version | head -2
-        # ICON0.PNG optional – Makefile uses NULL if missing
+        which psp-gcc && psp-gcc --version | head -2
         make clean || true
         make
-        ls -la EBOOT.PBP PARAM.SFO BadCBA.prx BadCBA.elf 2>/dev/null || ls -la
-
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
+        ls -la EBOOT.PBP PARAM.SFO BadCBA.prx 2>/dev/null || ls -la
+    - uses: actions/upload-artifact@v4
       with:
         name: BadCBA-PSP-${{ github.sha }}
         path: |
           psp/EBOOT.PBP
           psp/PARAM.SFO
           psp/BadCBA.prx
-          psp/BadCBA.elf
         if-no-files-found: warn
-
-    - name: Publish Release (PSP)
+    - name: Publish Release
       if: github.event_name != 'pull_request'
       uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'latest' }}
-        name: ${{ startsWith(github.ref, 'refs/tags/v') && format('BadCBA {0}', github.ref_name) || 'BadCBA latest' }}
-        files: |
-          psp/EBOOT.PBP
+        files: psp/EBOOT.PBP
         fail_on_unmatched_files: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
