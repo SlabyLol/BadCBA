@@ -1,11 +1,12 @@
 /*
- * BadCBA PSP GUI – simple GU framebuffer menus
+ * BadCBA PSP GUI
  */
 
+#include <pspkernel.h>
 #include <pspgu.h>
 #include <pspdisplay.h>
-#include <pspkernel.h>
 #include <pspctrl.h>
+#include <pspdebug.h>
 #include <string.h>
 #include <stdio.h>
 
@@ -17,7 +18,6 @@
 #define SCR_HEIGHT 272
 
 static unsigned int __attribute__((aligned(16))) list[262144];
-static void *frame_buffer = 0;
 
 enum {
     MENU_MAIN = 0,
@@ -31,6 +31,7 @@ static int menu = MENU_MAIN;
 static int selected = 0;
 static int duration_s = 5;
 static int volume = 80;
+static int debug_inited = 0;
 
 static const char *main_items[] = {
     "Select media (ms0:)",
@@ -41,17 +42,11 @@ static const char *main_items[] = {
 };
 static const int main_count = 5;
 
-static void draw_rect(int x, int y, int w, int h, unsigned int color)
-{
-    /* Immediate-mode colored quad via GU clear region style – simple fill */
-    sceGuScissor(x, y, x + w, y + h);
-    sceGuClearColor(color);
-    sceGuClear(GU_COLOR_BUFFER_BIT);
-    sceGuScissor(0, 0, SCR_WIDTH, SCR_HEIGHT);
-}
-
 void gui_init(void)
 {
+    pspDebugScreenInit();
+    debug_inited = 1;
+
     sceGuInit();
     sceGuStart(GU_DIRECT, list);
     sceGuDrawBuffer(GU_PSM_8888, (void *)0, BUF_WIDTH);
@@ -66,6 +61,7 @@ void gui_init(void)
     sceGuSync(0, 0);
     sceDisplayWaitVblankStart();
     sceGuDisplay(GU_TRUE);
+
     menu = MENU_MAIN;
     selected = 0;
 }
@@ -121,7 +117,6 @@ void gui_update(unsigned int buttons)
                 break;
             case 1: menu = MENU_SETTINGS; selected = 0; break;
             case 2:
-                /* Prepare output folder on Memory Stick */
                 if (!filebrowser_ms_present())
                     menu = MENU_NO_MS;
                 else
@@ -149,20 +144,8 @@ void gui_update(unsigned int buttons)
 
 void gui_render(void)
 {
-    sceGuStart(GU_DIRECT, list);
-    sceGuClearColor(0xFF120A0A);
-    sceGuClear(GU_COLOR_BUFFER_BIT);
-
-    /* Header bar */
-    draw_rect(0, 0, SCR_WIDTH, 28, 0xFF2D1F14);
-    draw_rect(0, 28, SCR_WIDTH, 2, 0xFFE7C65C);
-
-    /*
-     * Text rendering without a full font engine: menus are driven by
-     * debug screen style via pspDebugScreen for readability.
-     */
-    sceGuFinish();
-    sceGuSync(0, 0);
+    if (!debug_inited)
+        pspDebugScreenInit();
 
     pspDebugScreenSetXY(0, 0);
     pspDebugScreenSetTextColor(0x00CEC9);
@@ -224,6 +207,4 @@ void gui_render(void)
     }
 
     sceDisplayWaitVblankStart();
-    frame_buffer = sceGuSwapBuffers();
-    (void)frame_buffer;
 }

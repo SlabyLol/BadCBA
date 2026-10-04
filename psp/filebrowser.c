@@ -4,6 +4,7 @@
 
 #include <pspkernel.h>
 #include <pspiofilemgr.h>
+#include <pspdebug.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -36,6 +37,15 @@ static int str_ends_with_ci(const char *s, const char *suf)
     return 1;
 }
 
+static int is_dir_mode(unsigned int mode)
+{
+#ifdef FIO_S_ISDIR
+    return FIO_S_ISDIR(mode);
+#else
+    return (mode & 0x1000) != 0 || (mode & 0x10) != 0;
+#endif
+}
+
 int filebrowser_ms_present(void)
 {
     SceUID d = sceIoDopen("ms0:/");
@@ -49,6 +59,7 @@ int filebrowser_ms_present(void)
 void filebrowser_init(const char *root)
 {
     strncpy(cwd, root, sizeof(cwd) - 1);
+    cwd[sizeof(cwd) - 1] = '\0';
     entry_count = 0;
     cursor = 0;
 }
@@ -67,7 +78,7 @@ static void scan(void)
         Entry *e = &entries[entry_count];
         strncpy(e->name, de.d_name, MAX_NAME - 1);
         e->name[MAX_NAME - 1] = '\0';
-        e->is_dir = FIO_S_ISDIR(de.d_stat.st_mode);
+        e->is_dir = is_dir_mode(de.d_stat.st_mode);
         entry_count++;
         memset(&de, 0, sizeof(de));
     }
@@ -100,7 +111,6 @@ void filebrowser_enter(void)
     if (!e->is_dir) return;
 
     if (strcmp(e->name, "..") == 0) {
-        /* go up one level */
         char *p = strrchr(cwd, '/');
         if (p && p != cwd + strlen(cwd) - 1) {
             *p = '\0';
