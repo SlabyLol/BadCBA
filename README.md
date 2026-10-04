@@ -1,91 +1,37 @@
 # BadCBA
 
-**BadCustomBootAnimation** – Create custom PS3 coldboot animations from **MP4** directly on your console.
+**BadCustomBootAnimation** – custom boot tools for **PS3** and **PSP**.
 
-BadCBA is a native PS3 homebrew app with a full on-screen GUI.  
-Install the PKG, pick an **MP4** from USB, convert it into a custom boot animation package – all on the PS3.
+| Platform | Folder | Output |
+|----------|--------|--------|
+| **PS3** | `/` (root) | `BadCBA.pkg` |
+| **PSP** | [`psp/`](psp/) | `EBOOT.PBP` |
 
-![BadCBA](https://img.shields.io/badge/PS3-Homebrew-purple) ![Input](https://img.shields.io/badge/input-MP4-cyan) ![License](https://img.shields.io/badge/license-MIT-blue)
+![PS3](https://img.shields.io/badge/PS3-Homebrew-purple) ![PSP](https://img.shields.io/badge/PSP-Homebrew-blue) ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ## What BadCBA means
 
 **Bad** **C**ustom **B**oot **A**nimation
 
-## Features
+---
 
-### Real On-Screen GUI
-- Dark modern theme
-- Controller navigation
-- Menus: Main, USB browser, Settings, Convert, About
-- Bitmap font on RSX framebuffer
+## PS3
 
-### Media support
-- **Primary input: MP4** (also accepts MP3 / M4V)
-- USB file browser for media files
-- Video frames → `coldboot.raf` (boot animation)
-- Audio track → `coldboot_stereo.ac3` + `coldboot_multi.ac3`
+Native homebrew with RSX GUI. Pick **MP4** from USB, convert, install custom coldboot to flash (CFW).
 
-### Settings
-- Max duration (1–8 s)
-- Volume (0–100 %)
-- Fade in/out
-- Backup existing coldboot files
-- Sample rate
-- Content ID & PKG name
+- See root `source/`, `Makefile`, workflow **Build BadCBA PKG**
+- Install: Package Manager → `BadCBA.pkg`
 
-### Output
-- Convert & create package structure
-- Export to USB (`/dev_usb000/BadCBA_Coldboot/`)
+## PSP
 
-## Requirements
+Homebrew under [`psp/`](psp/) – Memory Stick browser, settings, prepare `ms0:/BadCBA_Boot/`.
 
-- PS3 with CFW or PS3HEN
-- USB (FAT32) with your **MP4** files
-- multiMAN / IrisMAN / webMAN for flash operations
-
-## Installation
-
-1. Download `BadCBA.pkg` from [Releases](https://github.com/SlabyLol/BadCBA/releases)
-2. Copy to USB → Package Manager → Install
-3. Launch **BadCBA** under Game
-
-## How to use
-
-1. Put your MP4 on USB
-2. Open BadCBA → **Select MP4 from USB**
-3. Choose the file with **X**
-4. Adjust **Settings** if needed
-5. **Convert & Create PKG** or **Export to USB**
-
-## Building
+- Workflow: **Build BadCBA PSP** (Docker `pspdev/pspdev:latest`)
+- Install: `ms0:/PSP/GAME/BadCBA/EBOOT.PBP`
 
 ```bash
-export PS3DEV=/usr/local/ps3dev
-export PSL1GHT=$PS3DEV
-export PATH=$PATH:$PS3DEV/bin:$PS3DEV/ppu/bin:$PS3DEV/spu/bin
-
-make icons
-make
-make pkg
+docker run --rm -v "$PWD:/source" -w /source/psp pspdev/pspdev:latest make
 ```
-
-## Project structure
-
-```
-BadCBA/
-├── source/          # main, gui, filebrowser, settings, audio, pkg, rsxutil
-├── include/
-├── data/            # ICON0.PNG, PIC1.PNG, version.dat
-├── tools/           # gen_icons.py, sfo.py, pkg.py
-├── Makefile
-└── .github/workflows/
-```
-
-## Safety
-
-- Do not write to `/dev_flash` without backups
-- Prefer Export to USB + manual copy
-- Use at your own risk
 
 ## License
 
