@@ -1,4 +1,4 @@
-# BadCBA Makefile
+# BadCBA – PS3 Makefile (prefers real ps3dev pkg tools)
 ifneq ($(strip $(PS3DEV)),)
   export PATH := $(PS3DEV)/bin:$(PS3DEV)/ppu/bin:$(PS3DEV)/spu/bin:$(PATH)
 endif
@@ -8,9 +8,12 @@ endif
 
 PPU_CC     := $(shell which ppu-gcc 2>/dev/null)
 SPRXLINKER := $(shell which sprxlinker 2>/dev/null)
-MAKE_SELF  := $(shell which make_self_npdrm 2>/dev/null || which make_fself 2>/dev/null)
-SFO_PY     := $(shell which sfo.py 2>/dev/null || echo "$(CURDIR)/tools/sfo.py")
-PKG_PY     := $(shell which pkg.py 2>/dev/null || echo "$(CURDIR)/tools/pkg.py")
+# Prefer NPDRM self tools from toolchain
+MAKE_SELF  := $(shell which make_self_npdrm 2>/dev/null || which fself 2>/dev/null || which make_fself 2>/dev/null)
+SFO_BIN    := $(shell which sfo.py 2>/dev/null || which sfo 2>/dev/null)
+PKG_BIN    := $(shell which pkg.py 2>/dev/null || which pkg 2>/dev/null)
+# Fallbacks in repo (SFO only – PKG fallback is incomplete)
+SFO_FALLBACK := $(CURDIR)/tools/sfo.py
 
 ifeq ($(PPU_CC),)
   $(error ppu-gcc not found)
@@ -43,7 +46,7 @@ CFLAGS := -O2 -Wall $(INCLUDE)
 LDFLAGS := $(LIBPATHS) $(LIBS)
 VPATH := $(SOURCES)
 
-.PHONY: all clean pkg icons version
+.PHONY: all clean pkg icons version folder-install
 
 all: version $(TARGET).elf
 
@@ -66,35 +69,58 @@ ifneq ($(SPRXLINKER),)
 endif
 
 $(TARGET).self: $(TARGET).elf
+	@echo "[SELF] $@"
 ifneq ($(MAKE_SELF),)
-	@$(MAKE_SELF) $< $@ $(CONTENTID) 2>/dev/null || $(MAKE_SELF) $< $@ 2>/dev/null || cp $< $@
+	@# fself -n for NPDRM homebrew EBOOT
+	@$(MAKE_SELF) -n $< $@ 2>/dev/null || \
+	 $(MAKE_SELF) $< $@ $(CONTENTID) 2>/dev/null || \
+	 $(MAKE_SELF) $< $@ 2>/dev/null || cp $< $@
 else
 	@cp $< $@
+	@echo "WARNING: no fself/make_self – EBOOT may not run on console"
 endif
 
-pkg: $(TARGET).self icons version
-	@rm -rf pkg && mkdir -p pkg/USRDIR/icons
-	@cp $(TARGET).self pkg/USRDIR/EBOOT.BIN
-	@cp version.dat pkg/USRDIR/version.dat
-	@# PS3 package graphics
-	@test -f $(DATA)/ICON0.PNG && cp $(DATA)/ICON0.PNG pkg/ || true
-	@test -f $(DATA)/PIC1.PNG && cp $(DATA)/PIC1.PNG pkg/ || true
-	@test -f $(DATA)/PIC0.PNG && cp $(DATA)/PIC0.PNG pkg/ || true
-	@# Extra assets inside USRDIR
-	@test -f $(DATA)/SPLASH.PNG && cp $(DATA)/SPLASH.PNG pkg/USRDIR/ || true
-	@test -f $(DATA)/logo_128.png && cp $(DATA)/logo_*.png pkg/USRDIR/ || true
-	@test -d $(DATA)/icons && cp $(DATA)/icons/*.png pkg/USRDIR/icons/ 2>/dev/null || true
-	@# Error sound (repo root)
-	@if [ -f error-cba.wav ]; then cp error-cba.wav pkg/USRDIR/error-cba.wav; \
-	 elif [ -f $(DATA)/error-cba.wav ]; then cp $(DATA)/error-cba.wav pkg/USRDIR/; \
-	 else echo "Warning: error-cba.wav not found"; fi
-	@python3 $(SFO_PY) -f sfo.xml pkg/PARAM.SFO 2>/dev/null || true
-	@python3 $(PKG_PY) --contentid $(CONTENTID) pkg/ $(TARGET).pkg 2>/dev/null || true
-	@ls -la $(TARGET).pkg pkg/ pkg/USRDIR/ 2>/dev/null || echo "ELF/SELF ready"
+# Folder layout for multiMAN copy-install (no PKG needed)
+folder-install: $(TARGET).self icons version
+	@rm -rf $(APP_TITLEID)
+	@mkdir -p $(APP_TITLEID)/USRDIR
+	@cp $(TARGET).self $(APP_TITLEID)/USRDIR/EBOOT.BIN
+	@cp version.dat $(APP_TITLEID)/USRDIR/version.dat
+	@test -f $(DATA)/ICON0.PNG && cp $(DATA)/ICON0.PNG $(APP_TITLEID)/ || true
+	@test -f $(DATA)/PIC1.PNG && cp $(DATA)/PIC1.PNG $(APP_TITLEID)/ || true
+	@test -f error-cba.wav && cp error-cba.wav $(APP_TITLEID)/USRDIR/ || true
+ifneq ($(SFO_BIN),)
+	@$(SFO_BIN) --title "$(APP_TITLE)" --appid "$(APP_TITLEID)" -f sfo.xml $(APP_TITLEID)/PARAM.SFO 2>/dev/null || \
+	 $(SFO_BIN) -f sfo.xml $(APP_TITLEID)/PARAM.SFO 2>/dev/null || true
+else
+	@python3 $(SFO_FALLBACK) -f sfo.xml $(APP_TITLEID)/PARAM.SFO 2>/dev/null || true
+endif
+	@echo "Folder install ready: $(APP_TITLEID)/  → copy to /dev_hdd0/game/"
+	@ls -la $(APP_TITLEID)/ $(APP_TITLEID)/USRDIR/
+
+pkg: folder-install
+	@echo "=== Creating PKG ==="
+	@rm -rf pkg
+	@cp -a $(APP_TITLEID) pkg
+	@# Rename to expected pkg layout (PARAM at root of pkg dir)
+	@rm -rf pkg_build && mkdir -p pkg_build
+	@cp -a $(APP_TITLEID)/* pkg_build/
+ifneq ($(PKG_BIN),)
+	@$(PKG_BIN) --contentid $(CONTENTID) pkg_build/ $(TARGET).pkg
+	@ls -la $(TARGET).pkg
+	@echo "PKG created with toolchain $(PKG_BIN)"
+else
+	@echo "ERROR: No pkg.py from ps3dev in PATH."
+	@echo "XMB Package Manager will fail with 80029564 on fake PKGs."
+	@echo "Use: make folder-install  then copy BCBA00001 to /dev_hdd0/game/"
+	@echo "Or install ps3dev pkg.py and re-run make pkg."
+	@# Do NOT write a fake PKG that triggers 80029564
+	@false
+endif
 
 icons:
 	@mkdir -p $(DATA)/icons
 	@python3 tools/gen_icons.py
 
 clean:
-	@rm -rf $(BUILD) $(TARGET).elf $(TARGET).self $(TARGET).pkg pkg
+	@rm -rf $(BUILD) $(TARGET).elf $(TARGET).self $(TARGET).pkg pkg pkg_build $(APP_TITLEID)
