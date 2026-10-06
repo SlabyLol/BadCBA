@@ -1,51 +1,28 @@
-# Installing BadCBA on PS3
+# Installing BadCBA – HEN
 
-## Error codes
+## Must do on HEN
 
-| Code | Meaning | What to do |
-|------|---------|------------|
-| **80029564** | Invalid PKG | Use **folder install**, not Package Manager |
-| **80029533** | EBOOT is raw ELF | Need build with `fself -n` |
-| **80010009** | SELF / version / HEN issue | See below |
+1. **Every time** after reboot: **Enable HEN** first, then start BadCBA.
+2. Use **folder install** (not the broken old PKG).
+3. New builds use **`fself` without `-n`** for the folder EBOOT (correct for HEN).
 
-## Folder install (recommended)
+## Install steps
 
-1. Download **`BCBA00001_folder.zip`**
-2. Extract → `BCBA00001/`
-3. Copy to **`/dev_hdd0/game/BCBA00001/`** (multiMAN / IrisMAN / FTP)
-4. Must look like:
+1. Download latest **`BCBA00001_folder.zip`** (GitHub Actions / Release)
+2. Delete old folder on PS3: `/dev_hdd0/game/BCBA00001`
+3. Copy new `BCBA00001/` to `/dev_hdd0/game/BCBA00001/`
+4. **Enable HEN**
+5. XMB → Game → BadCBA
 
-```
-/dev_hdd0/game/BCBA00001/
-├── PARAM.SFO
-├── ICON0.PNG
-└── USRDIR/
-    └── EBOOT.BIN
-```
+## Still 80010009?
 
-## Error 80010009 – checklist
+- HEN really enabled? (try again after Enable HEN)
+- Full delete + recopy of `BCBA00001`
+- Start `EBOOT.BIN` from multiMAN file browser
+- Install webMAN MOD and retry
 
-1. **HEN / CFW aktiv?**  
-   Auf HEN: zuerst **Enable HEN**, dann BadCBA starten.
-
-2. **Alten Ordner löschen** und neu kopieren (kompletter `BCBA00001`).
-
-3. **Start über multiMAN**  
-   multiMAN → browse to `/dev_hdd0/game/BCBA00001/USRDIR/EBOOT.BIN`  
-   or use **app_home** if you use webMAN MOD.
-
-4. **PARAM.SFO**  
-   `PS3_SYSTEM_VER` is set to `03.4100` (homebrew-friendly).  
-   Rebuild if you still have an old SFO with 04.80.
-
-5. **QA Flag** (CFW / Rebug Toolbox): optional enable for homebrew.
-
-## Rebuild
-
-```bash
-export PS3DEV=/usr/local/ps3dev
-export PATH=$PATH:$PS3DEV/bin:$PS3DEV/ppu/bin
-make clean && make && make folder-install
-```
-
-Requires **fself** from ps3dev.
+| Code | Meaning |
+|------|--------|
+| 80029564 | Bad PKG → folder zip only |
+| 80029533 | EBOOT was ELF |
+| 80010009 | HEN off / old SELF / wrong install |
