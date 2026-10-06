@@ -1,4 +1,6 @@
-# BadCBA – PS3 Makefile (prefers real ps3dev pkg tools)
+# BadCBA – PS3 Makefile
+# EBOOT.BIN MUST be fake-SELF (fself -n). Raw ELF → error 80029533 on start.
+
 ifneq ($(strip $(PS3DEV)),)
   export PATH := $(PS3DEV)/bin:$(PS3DEV)/ppu/bin:$(PS3DEV)/spu/bin:$(PATH)
 endif
@@ -8,11 +10,10 @@ endif
 
 PPU_CC     := $(shell which ppu-gcc 2>/dev/null)
 SPRXLINKER := $(shell which sprxlinker 2>/dev/null)
-# Prefer NPDRM self tools from toolchain
-MAKE_SELF  := $(shell which make_self_npdrm 2>/dev/null || which fself 2>/dev/null || which make_fself 2>/dev/null)
+FSELF      := $(shell which fself 2>/dev/null)
+MAKE_SELF_NPDRM := $(shell which make_self_npdrm 2>/dev/null)
 SFO_BIN    := $(shell which sfo.py 2>/dev/null || which sfo 2>/dev/null)
 PKG_BIN    := $(shell which pkg.py 2>/dev/null || which pkg 2>/dev/null)
-# Fallbacks in repo (SFO only – PKG fallback is incomplete)
 SFO_FALLBACK := $(CURDIR)/tools/sfo.py
 
 ifeq ($(PPU_CC),)
@@ -68,19 +69,25 @@ ifneq ($(SPRXLINKER),)
 	@$(SPRXLINKER) $@ 2>/dev/null || true
 endif
 
+# Convert ELF → fake SELF (required for CFW/HEN launch)
 $(TARGET).self: $(TARGET).elf
 	@echo "[SELF] $@"
-ifneq ($(MAKE_SELF),)
-	@# fself -n for NPDRM homebrew EBOOT
-	@$(MAKE_SELF) -n $< $@ 2>/dev/null || \
-	 $(MAKE_SELF) $< $@ $(CONTENTID) 2>/dev/null || \
-	 $(MAKE_SELF) $< $@ 2>/dev/null || cp $< $@
+ifneq ($(FSELF),)
+	@$(FSELF) -n $< $@
+	@echo "Created NPDRM fake SELF with fself -n"
+else ifneq ($(MAKE_SELF_NPDRM),)
+	@$(MAKE_SELF_NPDRM) $< $@ $(CONTENTID)
+	@echo "Created SELF with make_self_npdrm"
 else
-	@cp $< $@
-	@echo "WARNING: no fself/make_self – EBOOT may not run on console"
+	@echo "ERROR: fself / make_self_npdrm not found."
+	@echo "Raw ELF as EBOOT causes PS3 error 80029533 on start."
+	@echo "Install ps3dev tools (fself) and rebuild."
+	@false
 endif
+	@# Refuse ELF magic in output
+	@python3 -c "d=open('$@','rb').read(4); import sys; sys.exit(0 if d!=b'\\x7fELF' else 1)" \
+		|| (echo "ERROR: $@ is still ELF – self tool failed"; false)
 
-# Folder layout for multiMAN copy-install (no PKG needed)
 folder-install: $(TARGET).self icons version
 	@rm -rf $(APP_TITLEID)
 	@mkdir -p $(APP_TITLEID)/USRDIR
@@ -95,26 +102,18 @@ ifneq ($(SFO_BIN),)
 else
 	@python3 $(SFO_FALLBACK) -f sfo.xml $(APP_TITLEID)/PARAM.SFO 2>/dev/null || true
 endif
-	@echo "Folder install ready: $(APP_TITLEID)/  → copy to /dev_hdd0/game/"
-	@ls -la $(APP_TITLEID)/ $(APP_TITLEID)/USRDIR/
+	@echo "Folder install: $(APP_TITLEID)/ → /dev_hdd0/game/$(APP_TITLEID)/"
+	@ls -la $(APP_TITLEID)/USRDIR/EBOOT.BIN
+	@file $(APP_TITLEID)/USRDIR/EBOOT.BIN 2>/dev/null || true
 
 pkg: folder-install
-	@echo "=== Creating PKG ==="
-	@rm -rf pkg
-	@cp -a $(APP_TITLEID) pkg
-	@# Rename to expected pkg layout (PARAM at root of pkg dir)
 	@rm -rf pkg_build && mkdir -p pkg_build
 	@cp -a $(APP_TITLEID)/* pkg_build/
 ifneq ($(PKG_BIN),)
 	@$(PKG_BIN) --contentid $(CONTENTID) pkg_build/ $(TARGET).pkg
 	@ls -la $(TARGET).pkg
-	@echo "PKG created with toolchain $(PKG_BIN)"
 else
-	@echo "ERROR: No pkg.py from ps3dev in PATH."
-	@echo "XMB Package Manager will fail with 80029564 on fake PKGs."
-	@echo "Use: make folder-install  then copy BCBA00001 to /dev_hdd0/game/"
-	@echo "Or install ps3dev pkg.py and re-run make pkg."
-	@# Do NOT write a fake PKG that triggers 80029564
+	@echo "No toolchain pkg.py – skip PKG (use BCBA00001 folder). Fake PKG = 80029564."
 	@false
 endif
 
