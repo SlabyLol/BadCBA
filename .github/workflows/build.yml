@@ -29,7 +29,7 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y --no-install-recommends \
-          build-essential wget ca-certificates python3 \
+          build-essential wget ca-certificates python3 zip \
           libelf1 zlib1g libgmp10 libssl3
 
     - name: Cache PS3DEV toolchain
@@ -72,6 +72,8 @@ jobs:
     - name: Verify toolchain
       run: |
         which ppu-gcc && ppu-gcc --version | head -2
+        which pkg.py || which pkg || echo "pkg.py missing – folder install only"
+        which fself || which make_self_npdrm || echo "fself missing"
 
     - name: Sync version.dat
       run: |
@@ -86,25 +88,22 @@ jobs:
         set -e
         make clean || true
         make -j$(nproc)
-        make pkg
-        echo "=== Outputs ==="
-        ls -la BadCBA.elf BadCBA.self BadCBA.pkg version.dat 2>/dev/null || ls -la
+        make folder-install
+        # Real PKG only with toolchain pkg.py (fake PKG causes 80029564)
+        make pkg || echo "PKG skipped – use BCBA00001 folder install"
+        # Zip folder for easy USB copy
+        zip -r BCBA00001_folder.zip BCBA00001
+        ls -la BCBA00001_folder.zip BadCBA.pkg BadCBA.elf BadCBA.self 2>/dev/null || ls -la
 
     - name: Collect release files
       id: files
       run: |
         mkdir -p release_out
-        for f in BadCBA.pkg BadCBA.elf BadCBA.self version.dat; do
-          if [ -f "$f" ]; then
-            cp "$f" release_out/
-            echo "+ $f"
-          else
-            echo "- missing $f"
-          fi
+        for f in BadCBA.pkg BadCBA.elf BadCBA.self version.dat BCBA00001_folder.zip; do
+          [ -f "$f" ] && cp "$f" release_out/ && echo "+ $f" || echo "- $f"
         done
-        ls -la release_out/
-        # Export list for release action
         echo "count=$(ls release_out | wc -l)" >> $GITHUB_OUTPUT
+        ls -la release_out/
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
@@ -120,17 +119,17 @@ jobs:
         tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'latest' }}
         name: ${{ startsWith(github.ref, 'refs/tags/v') && format('BadCBA {0}', github.ref_name) || format('BadCBA latest ({0})', env.APP_VERSION) }}
         body: |
-          ## BadCBA – PS3 Custom Boot Maker (MP4)
+          ## BadCBA – BadCustomBootAnimation (PS3)
 
-          - **Version:** `${{ env.APP_VERSION }}`
-          - **Commit:** `${{ github.sha }}`
+          ### If PKG gives error **80029564**
+          Use **folder install** instead:
 
-          ### Install
-          1. Download **BadCBA.pkg** (or .elf/.self)
-          2. USB → Package Manager → Install
-          3. Launch under Game
+          1. Download `BCBA00001_folder.zip` and extract
+          2. Copy `BCBA00001/` to USB
+          3. multiMAN / IrisMAN → copy to `/dev_hdd0/game/BCBA00001/`
+          4. Reboot / refresh XMB → launch under Game
 
-          Includes `version.dat` = `${{ env.APP_VERSION }}`
+          See [INSTALL.md](INSTALL.md)
         files: release_out/*
         draft: false
         prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') }}
