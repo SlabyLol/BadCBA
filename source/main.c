@@ -1,6 +1,6 @@
 /*
- * BadCBA - BadCustomBootAnimation
- * error-cba.wav stops only when the app exits
+ * BadCBA – minimal safe entry then full app
+ * Avoids early crash (80010009) from failed video/sys init
  */
 
 #include <stdio.h>
@@ -37,50 +37,60 @@ int main(int argc, const char *argv[])
     (void)argc;
     (void)argv;
 
+    /* Load modules – ignore failures so HEN can still boot */
     sysModuleLoad(SYSMODULE_FS);
     sysModuleLoad(SYSMODULE_IO);
 
-    ioPadInit(7);
     sysUtilRegisterCallback(0, sysutil_callback, NULL);
 
-    u32 width = 0, height = 0;
-    if (rsxutil_init(&width, &height) != 0) {
-        printf("Video init failed\n");
-        return -1;
+    if (ioPadInit(7) != 0) {
+        /* still try to continue */
     }
+
+    u32 width = 640, height = 480;
+    int video_ok = (rsxutil_init(&width, &height) == 0);
 
     settings_load();
     error_init();
-    gui_init((int)width, (int)height);
+
+    if (video_ok)
+        gui_init((int)width, (int)height);
 
     while (running) {
         padData pad;
+        memset(&pad, 0, sizeof(pad));
         ioPadGetData(0, &pad);
 
-        if (error_is_active()) {
-            /* Only hide the red message – WAV keeps playing */
-            if (pad.BTN_CROSS || pad.BTN_CIRCLE)
-                error_clear();
+        /* Hold START + SELECT to exit if GUI broken */
+        if (pad.BTN_START && pad.BTN_SELECT)
+            running = 0;
+
+        if (video_ok) {
+            if (error_is_active()) {
+                if (pad.BTN_CROSS || pad.BTN_CIRCLE)
+                    error_clear();
+            } else {
+                gui_update(&pad);
+            }
+            error_update();
+            rsxutil_clear(0xFF0A0A12);
+            gui_render(rsxutil_get_context(), rsxutil_get_current());
+            error_render(rsxutil_get_current(), (int)width, (int)height);
+            rsxutil_flip();
         } else {
-            gui_update(&pad);
+            /* No video – just wait for exit */
+            usleep(50000);
         }
 
-        /* Always advance WAV loop if it was started by an error */
-        error_update();
-
-        rsxutil_clear(0xFF0A0A12);
-        gui_render(rsxutil_get_context(), rsxutil_get_current());
-        error_render(rsxutil_get_current(), (int)width, (int)height);
-
-        rsxutil_flip();
         sysUtilCheckCallback();
     }
 
-    /* App exit – THIS is where error-cba.wav finally stops */
     error_shutdown();
-    gui_shutdown();
+    if (video_ok)
+        gui_shutdown();
     settings_save();
-    rsxutil_finish();
+    if (video_ok)
+        rsxutil_finish();
     ioPadEnd();
 
     return 0;
