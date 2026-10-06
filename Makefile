@@ -1,5 +1,4 @@
 # BadCBA – standard PSL1GHT-style build
-# Use ppu_rules when available for correct SELF/PKG
 
 ifneq ($(strip $(PS3DEV)),)
   export PATH := $(PS3DEV)/bin:$(PS3DEV)/ppu/bin:$(PS3DEV)/spu/bin:$(PATH)
@@ -7,9 +6,6 @@ endif
 ifneq ($(strip $(PSL1GHT)),)
   export PATH := $(PSL1GHT)/host/bin:$(PATH)
 endif
-
-# Prefer official rules if PSL1GHT is installed
-PSL1GHT_RULES := $(wildcard $(PSL1GHT)/ppu_rules)
 
 TARGET		:= BadCBA
 TITLE		:= BadCBA
@@ -19,7 +15,6 @@ CONTENTID	:= UP0001-$(APPID)_00-0000000000000000
 SOURCES		:= source
 INCLUDES	:= include
 DATA		:= data
-
 BUILDDIR	:= build
 
 CFILES		:= $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
@@ -28,7 +23,6 @@ OFILES		:= $(CFILES:.c=.o)
 PPU_CC		:= $(shell which ppu-gcc 2>/dev/null)
 SPRX		:= $(shell which sprxlinker 2>/dev/null)
 FSELF		:= $(shell which fself 2>/dev/null)
-FSELF_NPDRM	:= $(FSELF) -n
 MAKE_SELF_NPDRM := $(shell which make_self_npdrm 2>/dev/null)
 SFO		:= $(shell which sfo.py 2>/dev/null || which sfo 2>/dev/null)
 PKG		:= $(shell which pkg.py 2>/dev/null || which pkg 2>/dev/null)
@@ -50,9 +44,8 @@ ifneq ($(strip $(PSL1GHT)),)
 endif
 
 LIBS		:= -lrsx -lgcm_sys -lio -lsysutil -lrt -llv2 -lm -lsysmodule -lnet -lsysfs
-CFLAGS		:= -O2 -Wall -mcpu=cell $(INCLUDE)
+CFLAGS		:= -O2 -Wall $(INCLUDE)
 LDFLAGS		:= $(LIBPATHS) $(LIBS)
-
 VPATH		:= $(SOURCES)
 
 .PHONY: all clean self folder-install pkg icons version
@@ -84,10 +77,10 @@ ifneq ($(FSELF),)
 else ifneq ($(MAKE_SELF_NPDRM),)
 	@$(MAKE_SELF_NPDRM) $(TARGET).elf $(TARGET).self $(CONTENTID)
 else
-	@echo "FATAL: no fself / make_self_npdrm – cannot build EBOOT"
+	@echo "FATAL: no fself / make_self_npdrm"
 	@false
 endif
-	@python3 -c "d=open('$(TARGET).self','rb').read(4); assert d!=b'\\x7fELF'; print('SELF OK', d[:4])"
+	@python3 -c "d=open('$(TARGET).self','rb').read(4); assert d!=b'\\x7fELF'; print('SELF OK')"
 
 folder-install: self icons version
 	@rm -rf $(APPID)
@@ -103,21 +96,18 @@ ifneq ($(SFO),)
 else
 	@python3 tools/sfo.py -f sfo.xml $(APPID)/PARAM.SFO 2>/dev/null || true
 endif
-	@echo "OK: $(APPID)/ → copy to /dev_hdd0/game/$(APPID)/"
-	@ls -la $(APPID)/USRDIR/EBOOT.BIN
+	@echo "OK: $(APPID)/ → /dev_hdd0/game/$(APPID)/"
 
 pkg: folder-install
 ifneq ($(PKG),)
 	@rm -rf pkg_build && mkdir pkg_build && cp -a $(APPID)/* pkg_build/
 	@$(PKG) --contentid $(CONTENTID) pkg_build/ $(TARGET).pkg
 else
-	@echo "No pkg.py – use folder install only"
 	@false
 endif
 
 icons:
-	@mkdir -p $(DATA)/icons
-	@python3 tools/gen_icons.py
+	@mkdir -p $(DATA)/icons && python3 tools/gen_icons.py
 
 clean:
 	@rm -rf $(BUILDDIR) $(TARGET).elf $(TARGET).self $(TARGET).pkg $(APPID) pkg_build
